@@ -237,3 +237,23 @@ npm run build
 npm run typecheck
 npm run test
 ```
+
+## Interop CI
+
+The cross-runtime interop harness is meant to run in GitHub Actions on
+`windows-latest`.
+
+It expects these sibling checkouts inside the same workspace:
+
+- `CultNetTS`
+- `cultnet-rs`
+- `cultcache-rs`
+- `CultLib`
+
+The workflow lives at
+[.github/workflows/cultnet-interop.yml](.github/workflows/cultnet-interop.yml)
+and drives the whole ritual through one command:
+
+```bash
+npm run test:interop
+```
