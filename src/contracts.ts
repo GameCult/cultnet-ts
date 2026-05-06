@@ -11,8 +11,11 @@ import sampleChangeNameSchema from "../contracts/cultnet.sample-change-name.sche
 import sampleChatSchema from "../contracts/cultnet.sample-chat.schema.json";
 import documentPutSchema from "../contracts/cultnet.document-put.schema.json";
 import documentDeleteSchema from "../contracts/cultnet.document-delete.schema.json";
+import rawDocumentRecordSchema from "../contracts/cultnet.raw-document-record.schema.json";
+import documentPutRawSchema from "../contracts/cultnet.document-put-raw.schema.json";
 import snapshotRequestSchema from "../contracts/cultnet.snapshot-request.schema.json";
 import snapshotResponseSchema from "../contracts/cultnet.snapshot-response.schema.json";
+import snapshotResponseRawSchema from "../contracts/cultnet.snapshot-response-raw.schema.json";
 import schemaDescriptorSchema from "../contracts/cultnet.schema-descriptor.schema.json";
 import schemaCatalogRequestSchema from "../contracts/cultnet.schema-catalog-request.schema.json";
 import schemaCatalogResponseSchema from "../contracts/cultnet.schema-catalog-response.schema.json";
@@ -31,12 +34,15 @@ export type CultNetSchemaVersion =
   | "cultnet.sample.chat.v0"
   | "cultnet.document_put.v0"
   | "cultnet.document_delete.v0"
+  | "cultnet.document_put_raw.v0"
   | "cultnet.snapshot_request.v0"
   | "cultnet.snapshot_response.v0"
+  | "cultnet.snapshot_response_raw.v0"
   | "cultnet.schema_catalog_request.v0"
   | "cultnet.schema_catalog_response.v0";
 
 export type CultNetSchemaKind = "wire_message" | "document_payload" | "shared_contract";
+export type CultNetRawPayloadEncoding = "messagepack";
 
 export interface CultNetDocumentRecord<TPayload = unknown> {
   documentType: string;
@@ -117,6 +123,25 @@ export interface CultNetDocumentDeleteMessage {
   documentKey: string;
 }
 
+export interface CultNetRawDocumentRecord {
+  documentType: string;
+  documentKey: string;
+  storedAt: string;
+  payloadSchemaVersion?: string;
+  payloadEncoding: CultNetRawPayloadEncoding;
+  payload: Uint8Array;
+  sourceRuntimeId?: string;
+  sourceAgentId?: string;
+  sourceRole?: string;
+  tags?: string[];
+}
+
+export interface CultNetDocumentPutRawMessage {
+  schemaVersion: "cultnet.document_put_raw.v0";
+  messageId: string;
+  document: CultNetRawDocumentRecord;
+}
+
 export interface CultNetSnapshotRequestMessage {
   schemaVersion: "cultnet.snapshot_request.v0";
   messageId: string;
@@ -128,6 +153,12 @@ export interface CultNetSnapshotResponseMessage<TPayload = unknown> {
   schemaVersion: "cultnet.snapshot_response.v0";
   messageId: string;
   documents: CultNetDocumentRecord<TPayload>[];
+}
+
+export interface CultNetSnapshotResponseRawMessage {
+  schemaVersion: "cultnet.snapshot_response_raw.v0";
+  messageId: string;
+  documents: CultNetRawDocumentRecord[];
 }
 
 export interface CultNetSchemaDescriptor {
@@ -392,8 +423,10 @@ export type CultNetMessage =
   | CultNetSampleChatMessage
   | CultNetDocumentPutMessage
   | CultNetDocumentDeleteMessage
+  | CultNetDocumentPutRawMessage
   | CultNetSnapshotRequestMessage
   | CultNetSnapshotResponseMessage
+  | CultNetSnapshotResponseRawMessage
   | CultNetSchemaCatalogRequestMessage
   | CultNetSchemaCatalogResponseMessage;
 
@@ -413,14 +446,21 @@ const CULTNET_MESSAGE_SCHEMAS = [
   sampleChatSchema,
   documentPutSchema,
   documentDeleteSchema,
+  documentPutRawSchema,
   snapshotRequestSchema,
   snapshotResponseSchema,
+  snapshotResponseRawSchema,
   schemaCatalogRequestSchema,
   schemaCatalogResponseSchema,
 ] as const;
 
 const cultNetValidators = new Map<CultNetSchemaVersion, ValidateFunction>();
-for (const schema of [documentRecordSchema, schemaDescriptorSchema, ...CULTNET_MESSAGE_SCHEMAS]) {
+for (const schema of [
+  documentRecordSchema,
+  rawDocumentRecordSchema,
+  schemaDescriptorSchema,
+  ...CULTNET_MESSAGE_SCHEMAS,
+]) {
   ajv.addSchema(schema);
 }
 
@@ -448,6 +488,16 @@ export function parseCultNetMessage(input: unknown, wireContract: CultNetWireCon
   const validator = cultNetValidators.get(schemaVersion);
   if (!validator) {
     throw new Error(`Unsupported CultNet schemaVersion "${schemaVersion}".`);
+  }
+
+  if (schemaVersion === "cultnet.document_put_raw.v0") {
+    validateDocumentPutRawMessage(input);
+    return input as CultNetDocumentPutRawMessage;
+  }
+
+  if (schemaVersion === "cultnet.snapshot_response_raw.v0") {
+    validateSnapshotResponseRawMessage(input);
+    return input as CultNetSnapshotResponseRawMessage;
   }
 
   if (!validator(input)) {
@@ -602,6 +652,11 @@ function encodeGameCultNetworkingMessage(message: CultNetMessage): [number, unkn
         message.messageId,
         message.schemas.map((schema) => encodeLegacySchemaDescriptor(schema)),
       ]];
+    case "cultnet.document_put_raw.v0":
+    case "cultnet.snapshot_response_raw.v0":
+      throw new Error(
+        `Message "${message.schemaVersion}" is not defined in the gamecult.networking.v0 contract.`,
+      );
     default:
       throw new Error(
         `Message "${message.schemaVersion}" is not defined in the gamecult.networking.v0 contract.`,
@@ -753,6 +808,105 @@ function decodeBase64Url(input: string, fieldName: string): Uint8Array {
   return Buffer.from(padded, "base64");
 }
 
+function validateDocumentPutRawMessage(input: unknown): asserts input is CultNetDocumentPutRawMessage {
+  const candidate = validateBinaryMessageRoot(input, "cultnet.document_put_raw.v0");
+  if (!("document" in candidate)) {
+    throw new Error("Validation failed for cultnet.document_put_raw.v0: /document: is required");
+  }
+
+  validateRawDocumentRecord(candidate.document, "/document");
+}
+
+function validateSnapshotResponseRawMessage(
+  input: unknown,
+): asserts input is CultNetSnapshotResponseRawMessage {
+  const candidate = validateBinaryMessageRoot(input, "cultnet.snapshot_response_raw.v0");
+  if (!("documents" in candidate) || !Array.isArray(candidate.documents)) {
+    throw new Error("Validation failed for cultnet.snapshot_response_raw.v0: /documents: must be an array");
+  }
+
+  candidate.documents.forEach((document, index) => {
+    validateRawDocumentRecord(document, `/documents/${index}`);
+  });
+}
+
+function validateBinaryMessageRoot(
+  input: unknown,
+  schemaVersion: "cultnet.document_put_raw.v0" | "cultnet.snapshot_response_raw.v0",
+): Record<string, unknown> {
+  if (!input || typeof input !== "object") {
+    throw new Error(`Validation failed for ${schemaVersion}: /: must be an object`);
+  }
+
+  const candidate = input as Record<string, unknown>;
+  if (candidate.schemaVersion !== schemaVersion) {
+    throw new Error(`Validation failed for ${schemaVersion}: /schemaVersion: must equal ${schemaVersion}`);
+  }
+  if (typeof candidate.messageId !== "string" || candidate.messageId.trim().length === 0) {
+    throw new Error(`Validation failed for ${schemaVersion}: /messageId: must be a non-empty string`);
+  }
+
+  return candidate;
+}
+
+function validateRawDocumentRecord(
+  input: unknown,
+  instancePath: string,
+): asserts input is CultNetRawDocumentRecord {
+  if (!input || typeof input !== "object") {
+    throw new Error(`Validation failed for raw CultNet document record: ${instancePath}: must be an object`);
+  }
+
+  const candidate = input as Record<string, unknown>;
+  requireNonEmptyString(candidate.documentType, `${instancePath}/documentType`);
+  requireNonEmptyString(candidate.documentKey, `${instancePath}/documentKey`);
+  requireNonEmptyString(candidate.storedAt, `${instancePath}/storedAt`);
+  if (
+    typeof candidate.payloadSchemaVersion !== "undefined"
+    && typeof candidate.payloadSchemaVersion !== "string"
+  ) {
+    throw new Error(
+      `Validation failed for raw CultNet document record: ${instancePath}/payloadSchemaVersion: must be a string`,
+    );
+  }
+  if (candidate.payloadEncoding !== "messagepack") {
+    throw new Error(
+      `Validation failed for raw CultNet document record: ${instancePath}/payloadEncoding: must equal messagepack`,
+    );
+  }
+  if (!(candidate.payload instanceof Uint8Array) || candidate.payload.length === 0) {
+    throw new Error(
+      `Validation failed for raw CultNet document record: ${instancePath}/payload: must be a non-empty Uint8Array`,
+    );
+  }
+  requireOptionalNonEmptyString(candidate.sourceRuntimeId, `${instancePath}/sourceRuntimeId`);
+  requireOptionalNonEmptyString(candidate.sourceAgentId, `${instancePath}/sourceAgentId`);
+  requireOptionalNonEmptyString(candidate.sourceRole, `${instancePath}/sourceRole`);
+  requireOptionalStringArray(candidate.tags, `${instancePath}/tags`);
+}
+
+function requireNonEmptyString(input: unknown, instancePath: string): void {
+  if (typeof input !== "string" || input.trim().length === 0) {
+    throw new Error(`Validation failed for raw CultNet document record: ${instancePath}: must be a non-empty string`);
+  }
+}
+
+function requireOptionalNonEmptyString(input: unknown, instancePath: string): void {
+  if (typeof input === "undefined") {
+    return;
+  }
+  requireNonEmptyString(input, instancePath);
+}
+
+function requireOptionalStringArray(input: unknown, instancePath: string): void {
+  if (typeof input === "undefined") {
+    return;
+  }
+  if (!Array.isArray(input) || input.some((item) => typeof item !== "string" || item.trim().length === 0)) {
+    throw new Error(`Validation failed for raw CultNet document record: ${instancePath}: must be an array of non-empty strings`);
+  }
+}
+
 export const cultNetSchemas = {
   helloSchema,
   loginSchema,
@@ -764,8 +918,11 @@ export const cultNetSchemas = {
   sampleChatSchema,
   documentPutSchema,
   documentDeleteSchema,
+  rawDocumentRecordSchema,
+  documentPutRawSchema,
   snapshotRequestSchema,
   snapshotResponseSchema,
+  snapshotResponseRawSchema,
   schemaDescriptorSchema,
   schemaCatalogRequestSchema,
   schemaCatalogResponseSchema,

@@ -265,6 +265,91 @@ test("CultNet document registry builds snapshots and applies document puts throu
   }
 });
 
+test("CultNet raw replication preserves CultCache payload bytes for bit-compatible neighbors", async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "cultnetts-raw-"));
+
+  try {
+    const documentDefinition = defineDocumentType({
+      type: "ghostlight.agent-state",
+      schema: z.custom<GhostlightAgentStateDocument>((value) => {
+        try {
+          validateGhostlightAgentState(value);
+          return true;
+        } catch {
+          return false;
+        }
+      }),
+    });
+
+    const registry = new CultNetDocumentRegistry([
+      defineCultNetDocumentBinding({
+        definition: documentDefinition,
+        payloadSchemaVersion: "ghostlight.agent_state.v0",
+      }),
+    ]);
+
+    const originCache = CultCache.builder()
+      .withDocumentType(documentDefinition)
+      .withGenericStore(new SingleFileMessagePackBackingStore(join(tempDir, "origin.msgpack")))
+      .build();
+    const targetCache = CultCache.builder()
+      .withDocumentType(documentDefinition)
+      .withGenericStore(new SingleFileMessagePackBackingStore(join(tempDir, "target.msgpack")))
+      .build();
+
+    const payload = validateGhostlightAgentState({
+      schema_version: "ghostlight.agent_state.v0",
+      world: {
+        world_id: "epiphany-face",
+        setting: "test harness",
+        time: { label: "now" },
+        canon_context: ["test"],
+      },
+      agents: [
+        {
+          agent_id: "epiphany.face",
+          identity: {
+            name: "Face",
+            roles: ["public-surface"],
+            origin: "test",
+            public_description: "test",
+          },
+          canonical_state: {
+            underlying_organization: {},
+            stable_dispositions: {},
+            behavioral_dimensions: {},
+            presentation_strategy: {},
+            voice_style: {},
+            situational_state: {},
+            values: [],
+          },
+          goals: [],
+          memories: {
+            episodic: [],
+            semantic: [],
+            relationship_summaries: [],
+          },
+          perceived_state_overlays: [],
+        },
+      ],
+      relationships: [],
+      events: [],
+      scenes: [],
+    });
+
+    await originCache.put(documentDefinition, "epiphany.face", payload);
+    const rawSnapshot = registry.createRawSnapshotResponse(originCache, "raw-snapshot-1");
+    await registry.applyRawSnapshotResponse(targetCache, rawSnapshot);
+
+    const sourceEnvelope = originCache.getRequiredEnvelope(documentDefinition, "epiphany.face");
+    const targetEnvelope = targetCache.getRequiredEnvelope(documentDefinition, "epiphany.face");
+    assert.deepEqual(targetEnvelope.payload, sourceEnvelope.payload);
+    assert.equal(targetCache.getRequired(documentDefinition, "epiphany.face").schema_version, "ghostlight.agent_state.v0");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("Ghostlight contract mirror rejects nested payloads that violate the canonical schema", () => {
   assert.throws(
     () => validateGhostlightAgentState({

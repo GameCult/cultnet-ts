@@ -58,8 +58,10 @@ Current message families:
 - `cultnet.error.v0`
 - `cultnet.document_put.v0`
 - `cultnet.document_delete.v0`
+- `cultnet.document_put_raw.v0`
 - `cultnet.snapshot_request.v0`
 - `cultnet.snapshot_response.v0`
+- `cultnet.snapshot_response_raw.v0`
 - `cultnet.sample.change_name.v0`
 - `cultnet.sample.chat.v0`
 
@@ -120,6 +122,29 @@ Current wire-contract options:
 
 So the transport can stay developer-friendly while the binary stops freelancing
 away from the C# lineage.
+
+## Local Fast Lane
+
+For direct-pipe neighbors that already share the same CultCache formatter
+contract, `cultnet-ts` now has a raw replication lane:
+
+- `cultnet.document_put_raw.v0`
+- `cultnet.snapshot_response_raw.v0`
+
+Those messages carry the canonical persisted MessagePack payload bytes plus the
+typed envelope metadata. Paired with `CultCacheTS.putEnvelope(...)`, that means
+the receiving cache can ingest the exact payload bytes directly instead of
+decoding them into generic object soup and then re-encoding the same document
+again.
+
+This is cheaper. It is not magic:
+
+- framing still copies
+- MessagePack decoding still happens once on ingest
+- ordinary `CultNetPeer` send/receive still materializes messages
+
+But for local or near-local runtimes sharing the same contract, the fast lane
+cuts out the dumbest part of the trip.
 
 ## Schema Discovery
 

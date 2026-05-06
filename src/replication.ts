@@ -5,14 +5,18 @@ import type {
   CultCacheDocumentDefinition,
   CultCacheDocumentFormatter,
   CultCacheDocumentValue,
+  CultCacheEnvelope,
 } from "cultcache-ts";
 
 import {
   type CultNetDocumentDeleteMessage,
   type CultNetDocumentPutMessage,
+  type CultNetDocumentPutRawMessage,
   type CultNetDocumentRecord,
+  type CultNetRawDocumentRecord,
   type CultNetSnapshotRequestMessage,
   type CultNetSnapshotResponseMessage,
+  type CultNetSnapshotResponseRawMessage,
 } from "./contracts";
 
 export interface CultNetDocumentBinding<
@@ -94,6 +98,17 @@ export class CultNetDocumentRegistry {
     };
   }
 
+  createRawDocumentPutMessageFromEnvelope(
+    messageId: string,
+    envelope: CultCacheEnvelope,
+  ): CultNetDocumentPutRawMessage {
+    return {
+      schemaVersion: "cultnet.document_put_raw.v0",
+      messageId,
+      document: this.#createRawDocumentRecord(envelope),
+    };
+  }
+
   createSnapshotResponse(
     cache: CultCache,
     messageId: string,
@@ -130,6 +145,34 @@ export class CultNetDocumentRegistry {
     };
   }
 
+  createRawSnapshotResponse(
+    cache: CultCache,
+    messageId: string,
+    filter?: CultNetSnapshotRequestMessage,
+  ): CultNetSnapshotResponseRawMessage {
+    const requestedTypes = filter?.documentTypes ? new Set(filter.documentTypes) : undefined;
+    const requestedKeys = filter?.documentKeys ? new Set(filter.documentKeys) : undefined;
+    const documents: CultNetRawDocumentRecord[] = [];
+
+    for (const envelope of cache.snapshot()) {
+      if (requestedTypes && !requestedTypes.has(envelope.type)) {
+        continue;
+      }
+
+      if (requestedKeys && !requestedKeys.has(envelope.key)) {
+        continue;
+      }
+
+      documents.push(this.#createRawDocumentRecord(envelope));
+    }
+
+    return {
+      schemaVersion: "cultnet.snapshot_response_raw.v0",
+      messageId,
+      documents,
+    };
+  }
+
   async applyDocumentPutMessage(
     cache: CultCache,
     message: CultNetDocumentPutMessage,
@@ -150,6 +193,19 @@ export class CultNetDocumentRegistry {
     return cache.delete(binding.definition, message.documentKey);
   }
 
+  async applyRawDocumentPutMessage(
+    cache: CultCache,
+    message: CultNetDocumentPutRawMessage,
+  ): Promise<unknown> {
+    const binding = this.#requireBinding(message.document.documentType);
+    return cache.putEnvelope(binding.definition, {
+      key: message.document.documentKey,
+      type: message.document.documentType,
+      payload: new Uint8Array(message.document.payload),
+      storedAt: message.document.storedAt,
+    });
+  }
+
   async applySnapshotResponse(
     cache: CultCache,
     response: CultNetSnapshotResponseMessage,
@@ -163,6 +219,19 @@ export class CultNetDocumentRegistry {
     }
   }
 
+  async applyRawSnapshotResponse(
+    cache: CultCache,
+    response: CultNetSnapshotResponseRawMessage,
+  ): Promise<void> {
+    for (const document of response.documents) {
+      await this.applyRawDocumentPutMessage(cache, {
+        schemaVersion: "cultnet.document_put_raw.v0",
+        messageId: response.messageId,
+        document,
+      });
+    }
+  }
+
   #requireBinding(documentType: string): CultNetDocumentBinding {
     const binding = this.get(documentType);
     if (!binding) {
@@ -170,6 +239,20 @@ export class CultNetDocumentRegistry {
     }
 
     return binding;
+  }
+
+  #createRawDocumentRecord(envelope: CultCacheEnvelope): CultNetRawDocumentRecord {
+    const binding = this.#requireBinding(envelope.type);
+    return {
+      documentType: envelope.type,
+      documentKey: envelope.key,
+      storedAt: envelope.storedAt,
+      payloadSchemaVersion: typeof binding.payloadSchemaVersion === "string"
+        ? binding.payloadSchemaVersion
+        : undefined,
+      payloadEncoding: "messagepack",
+      payload: new Uint8Array(envelope.payload),
+    };
   }
 }
 

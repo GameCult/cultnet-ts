@@ -210,6 +210,21 @@ export const cultNetBuiltinSchemaRegistry = new CultNetSchemaRegistry([
     wireContracts: ["cultnet.schema.v0"],
   },
   {
+    schemaId: cultNetSchemas.rawDocumentRecordSchema.$id,
+    kind: "shared_contract",
+    schema: cultNetSchemas.rawDocumentRecordSchema,
+    title: cultNetSchemas.rawDocumentRecordSchema.title,
+    wireContracts: ["cultnet.schema.v0"],
+  },
+  {
+    schemaId: cultNetSchemas.documentPutRawSchema.$id,
+    kind: "wire_message",
+    schema: cultNetSchemas.documentPutRawSchema,
+    schemaVersion: "cultnet.document_put_raw.v0",
+    title: cultNetSchemas.documentPutRawSchema.title,
+    wireContracts: ["cultnet.schema.v0"],
+  },
+  {
     schemaId: cultNetSchemas.snapshotRequestSchema.$id,
     kind: "wire_message",
     schema: cultNetSchemas.snapshotRequestSchema,
@@ -223,6 +238,14 @@ export const cultNetBuiltinSchemaRegistry = new CultNetSchemaRegistry([
     schema: cultNetSchemas.snapshotResponseSchema,
     schemaVersion: "cultnet.snapshot_response.v0",
     title: cultNetSchemas.snapshotResponseSchema.title,
+    wireContracts: ["cultnet.schema.v0"],
+  },
+  {
+    schemaId: cultNetSchemas.snapshotResponseRawSchema.$id,
+    kind: "wire_message",
+    schema: cultNetSchemas.snapshotResponseRawSchema,
+    schemaVersion: "cultnet.snapshot_response_raw.v0",
+    title: cultNetSchemas.snapshotResponseRawSchema.title,
     wireContracts: ["cultnet.schema.v0"],
   },
   {
