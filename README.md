@@ -19,8 +19,10 @@ The library currently includes:
 - session-token signing/validation compatible with the C# CultLib semantics
 - explicit wire-contract selection instead of heuristic payload guessing
 - `CultCacheTS` replication helpers for document put/delete/snapshot flows
-- an exact mirrored runtime validator and TS contract surface for Ghostlight's
-  canonical `ghostlight.agent_state.v0` payload
+- generated TypeScript contracts and runtime verifiers from canonical JSON
+  schemas owned elsewhere in the swarm
+- an exact mirrored runtime validator and generated TS contract surface for
+  Ghostlight's canonical `ghostlight.agent_state.v0` payload
 
 ## Why This Exists
 
@@ -68,6 +70,37 @@ fixture format:
 That means `EpiphanyAgent` role dossiers and Ghostlight fixtures can travel over
 CultNet without inventing a second ontology first.
 
+## Generated Swarm Contracts
+
+`cultnet-ts` can consume canonical JSON Schema files and generate:
+
+- TypeScript contract classes/interfaces
+- runtime schema verifiers
+- parse-compatible schema objects that can be handed directly to
+  `CultCacheTS`
+
+The manifest lives at [contracts/swarm-contracts.manifest.json](contracts/swarm-contracts.manifest.json).
+Right now it points at Ghostlight's canonical agent-state schema, because
+Ghostlight owns the swarm's most important mind-shape contract.
+
+Generate the contract layer with:
+
+```bash
+npm run contracts:generate
+```
+
+That emits [src/generated/swarm-contracts.generated.ts](src/generated/swarm-contracts.generated.ts),
+which exports:
+
+- the generated TS contract shape
+- named runtime verifier helpers such as
+  `validateGhostlightAgentStateGenerated(...)` and
+  `parseGhostlightAgentStateGenerated(...)`
+- a runtime `validate(...)` / `parse(...)` contract object via
+  `defineJsonSchemaContract(...)`
+- a contract object that `CultCacheTS` can persist directly without a second
+  hand-written Zod mirror
+
 ## Wire Contracts
 
 `cultnet-ts` does not sniff random payloads and pretend that counts as rigor.
@@ -89,27 +122,17 @@ away from the C# lineage.
 ## Quick Example
 
 ```ts
-import { Duplex } from "node:stream";
-import { z } from "zod";
 import { CultCache, defineDocumentType } from "cultcache-ts";
 import {
   CultNetDocumentRegistry,
   CultNetPeer,
-  CultNetClientSecurityOptions,
-  CultNetSecret,
   defineCultNetDocumentBinding,
+  ghostlightAgentStateGeneratedContract,
 } from "cultnet-ts";
 
 const ghostlightStateDefinition = defineDocumentType({
   type: "ghostlight.agent-state",
-  schema: z.object({
-    schema_version: z.literal("ghostlight.agent_state.v0"),
-    world: z.record(z.unknown()),
-    agents: z.array(z.record(z.unknown())),
-    relationships: z.array(z.record(z.unknown())),
-    events: z.array(z.record(z.unknown())),
-    scenes: z.array(z.record(z.unknown())),
-  }),
+  schema: ghostlightAgentStateGeneratedContract,
 });
 
 const registry = new CultNetDocumentRegistry([
@@ -156,6 +179,7 @@ maps them back to the exact C# union payload shape at the wire boundary.
 
 ```bash
 npm install
+npm run contracts:generate
 npm run build
 npm run typecheck
 npm run test

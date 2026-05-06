@@ -45,6 +45,11 @@ export {
 export { encodeFrame, LengthPrefixedMessageFramer } from "./framing";
 export { CultNetPeer, type CultNetPeerEvents } from "./peer";
 export {
+  defineJsonSchemaContract,
+  type JsonSchemaContract,
+  type JsonSchemaContractDefinition,
+} from "./json-schema-contract";
+export {
   CultNetDocumentRegistry,
   defineCultNetDocumentBinding,
   type CultNetDocumentBinding,
@@ -61,3 +66,9 @@ export {
   resolveGhostlightAgentIds,
   validateGhostlightAgentStateDocument,
 } from "./ghostlight";
+export {
+  ghostlightAgentStateGeneratedContract,
+  parseGhostlightAgentStateGenerated,
+  validateGhostlightAgentStateGenerated,
+  type GhostlightAgentStateShape,
+} from "./generated/swarm-contracts.generated";

@@ -9,8 +9,9 @@
     "contracts"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --pretty false",
+    "contracts:generate": "node tools/generate-swarm-contracts.mjs",
+    "build": "npm run contracts:generate && tsc -p tsconfig.json",
+    "typecheck": "npm run contracts:generate && tsc -p tsconfig.json --pretty false",
     "test": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js"
   },
   "keywords": [
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "json-schema-to-typescript": "^15.0.4",
     "typescript": "^5.9.0",
     "zod": "^3.25.76"
   }

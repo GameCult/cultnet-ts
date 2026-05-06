@@ -20,9 +20,12 @@ import {
   CultNetServerSecurityOptions,
   defineCultNetDocumentBinding,
   encodeCultNetMessageForWire,
+  ghostlightAgentStateGeneratedContract,
   parseCultNetMessage,
+  validateGhostlightAgentStateGenerated,
   validateGhostlightAgentState,
   type CultNetLoginMessage,
+  type GhostlightAgentStateShape,
   type GhostlightAgentStateDocument,
 } from "../src";
 
@@ -252,4 +255,70 @@ test("Ghostlight contract mirror rejects nested payloads that violate the canoni
     }),
     /agent_id/u,
   );
+});
+
+test("Generated Ghostlight contracts can feed CultCacheTS directly without a Zod mirror", async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "cultnetts-generated-"));
+
+  try {
+    const documentDefinition = defineDocumentType({
+      type: "ghostlight.agent-state.generated",
+      schema: ghostlightAgentStateGeneratedContract,
+      global: true,
+    });
+
+    const store = new SingleFileMessagePackBackingStore(join(tempDir, "generated.msgpack"));
+    const cache = CultCache.builder()
+      .withDocumentType(documentDefinition)
+      .withGenericStore(store)
+      .build();
+
+    const payload: GhostlightAgentStateShape = {
+      schema_version: "ghostlight.agent_state.v0",
+      world: {
+        world_id: "ghostlight-lab",
+        setting: "test harness",
+        time: { label: "now" },
+        canon_context: ["test"],
+      },
+      agents: [
+        {
+          agent_id: "void",
+          identity: {
+            name: "Void",
+            roles: ["observer"],
+            origin: "test",
+            public_description: "test",
+          },
+          canonical_state: {
+            underlying_organization: {},
+            stable_dispositions: {},
+            behavioral_dimensions: {},
+            presentation_strategy: {},
+            voice_style: {},
+            situational_state: {},
+            values: [],
+          },
+          goals: [],
+          memories: {
+            episodic: [],
+            semantic: [],
+            relationship_summaries: [],
+          },
+          perceived_state_overlays: [],
+        },
+      ],
+      relationships: [],
+      events: [],
+      scenes: [],
+    };
+
+    await cache.putGlobal(documentDefinition, payload);
+    const roundTrip = cache.getRequiredGlobal(documentDefinition);
+    assert.equal(validateGhostlightAgentStateGenerated(roundTrip), true);
+    assert.equal(roundTrip.schema_version, "ghostlight.agent_state.v0");
+    assert.equal(roundTrip.agents[0]?.agent_id, "void");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });

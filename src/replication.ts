@@ -3,6 +3,7 @@ import type {
   AnyCultCacheDocumentDefinition,
   CultCache,
   CultCacheDocumentDefinition,
+  CultCacheDocumentFormatter,
   CultCacheDocumentValue,
 } from "cultcache-ts";
 
@@ -187,9 +188,13 @@ function decodeDocumentValue<TDefinition extends CultCacheDocumentDefinition>(
   definition: TDefinition,
   payload: Uint8Array,
 ): CultCacheDocumentValue<TDefinition> {
-  const formatter = definition.formatter ?? {
+  const formatter: CultCacheDocumentFormatter<CultCacheDocumentValue<TDefinition>> =
+    (definition.formatter as CultCacheDocumentFormatter<
+      CultCacheDocumentValue<TDefinition>
+    > | undefined) ?? {
     encode: (value: CultCacheDocumentValue<TDefinition>) => encode(value),
-    decode: (bytes: Uint8Array) => decode(bytes),
+    decode: (bytes: Uint8Array) => decode(bytes) as CultCacheDocumentValue<TDefinition>,
   };
-  return definition.schema.parse(formatter.decode(payload));
+  const decoded = formatter.decode(payload);
+  return definition.schema.parse(decoded) as CultCacheDocumentValue<TDefinition>;
 }
