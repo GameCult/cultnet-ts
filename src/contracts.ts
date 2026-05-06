@@ -13,6 +13,9 @@ import documentPutSchema from "../contracts/cultnet.document-put.schema.json";
 import documentDeleteSchema from "../contracts/cultnet.document-delete.schema.json";
 import snapshotRequestSchema from "../contracts/cultnet.snapshot-request.schema.json";
 import snapshotResponseSchema from "../contracts/cultnet.snapshot-response.schema.json";
+import schemaDescriptorSchema from "../contracts/cultnet.schema-descriptor.schema.json";
+import schemaCatalogRequestSchema from "../contracts/cultnet.schema-catalog-request.schema.json";
+import schemaCatalogResponseSchema from "../contracts/cultnet.schema-catalog-response.schema.json";
 import ghostlightAgentStateSchema from "../contracts/ghostlight.agent-state.schema.json";
 
 export type CultNetWireContract = "cultnet.schema.v0" | "gamecult.networking.v0";
@@ -29,7 +32,11 @@ export type CultNetSchemaVersion =
   | "cultnet.document_put.v0"
   | "cultnet.document_delete.v0"
   | "cultnet.snapshot_request.v0"
-  | "cultnet.snapshot_response.v0";
+  | "cultnet.snapshot_response.v0"
+  | "cultnet.schema_catalog_request.v0"
+  | "cultnet.schema_catalog_response.v0";
+
+export type CultNetSchemaKind = "wire_message" | "document_payload" | "shared_contract";
 
 export interface CultNetDocumentRecord<TPayload = unknown> {
   documentType: string;
@@ -52,6 +59,7 @@ export interface CultNetHelloMessage {
   displayName?: string;
   supportedDocumentTypes?: string[];
   supportedMessageVersions?: string[];
+  supportsSchemaCatalog?: boolean;
 }
 
 export interface CultNetLoginMessage {
@@ -120,6 +128,31 @@ export interface CultNetSnapshotResponseMessage<TPayload = unknown> {
   schemaVersion: "cultnet.snapshot_response.v0";
   messageId: string;
   documents: CultNetDocumentRecord<TPayload>[];
+}
+
+export interface CultNetSchemaDescriptor {
+  schemaId: string;
+  kind: CultNetSchemaKind;
+  schemaVersion?: string;
+  documentType?: string;
+  title?: string;
+  wireContracts: CultNetWireContract[];
+  contentHash: string;
+  schemaJson?: string;
+}
+
+export interface CultNetSchemaCatalogRequestMessage {
+  schemaVersion: "cultnet.schema_catalog_request.v0";
+  messageId: string;
+  includeSchemaJson?: boolean;
+  schemaIds?: string[];
+  kinds?: CultNetSchemaKind[];
+}
+
+export interface CultNetSchemaCatalogResponseMessage {
+  schemaVersion: "cultnet.schema_catalog_response.v0";
+  messageId: string;
+  schemas: CultNetSchemaDescriptor[];
 }
 
 export interface GhostlightPressure {
@@ -360,7 +393,9 @@ export type CultNetMessage =
   | CultNetDocumentPutMessage
   | CultNetDocumentDeleteMessage
   | CultNetSnapshotRequestMessage
-  | CultNetSnapshotResponseMessage;
+  | CultNetSnapshotResponseMessage
+  | CultNetSchemaCatalogRequestMessage
+  | CultNetSchemaCatalogResponseMessage;
 
 const ajv = new Ajv2020({
   allErrors: true,
@@ -380,10 +415,12 @@ const CULTNET_MESSAGE_SCHEMAS = [
   documentDeleteSchema,
   snapshotRequestSchema,
   snapshotResponseSchema,
+  schemaCatalogRequestSchema,
+  schemaCatalogResponseSchema,
 ] as const;
 
 const cultNetValidators = new Map<CultNetSchemaVersion, ValidateFunction>();
-for (const schema of [documentRecordSchema, ...CULTNET_MESSAGE_SCHEMAS]) {
+for (const schema of [documentRecordSchema, schemaDescriptorSchema, ...CULTNET_MESSAGE_SCHEMAS]) {
   ajv.addSchema(schema);
 }
 
@@ -503,6 +540,20 @@ function parseGameCultNetworkingMessage(input: unknown): CultNetMessage {
         schemaVersion: "cultnet.sample.chat.v0",
         text: requireLegacyString(payload[0], "ChatMessage.Text"),
       };
+    case 7:
+      return {
+        schemaVersion: "cultnet.schema_catalog_request.v0",
+        messageId: requireLegacyString(payload[0], "SchemaCatalogRequestMessage.MessageId"),
+        includeSchemaJson: requireLegacyBoolean(payload[1], "SchemaCatalogRequestMessage.IncludeSchemaJson"),
+        schemaIds: requireLegacyOptionalStringArray(payload[2], "SchemaCatalogRequestMessage.SchemaIds"),
+        kinds: requireLegacyOptionalSchemaKindArray(payload[3], "SchemaCatalogRequestMessage.Kinds"),
+      };
+    case 8:
+      return {
+        schemaVersion: "cultnet.schema_catalog_response.v0",
+        messageId: requireLegacyString(payload[0], "SchemaCatalogResponseMessage.MessageId"),
+        schemas: requireLegacySchemaDescriptorArray(payload[1], "SchemaCatalogResponseMessage.Schemas"),
+      };
     default:
       throw new Error(`Unsupported gamecult.networking.v0 union tag "${unionTag}".`);
   }
@@ -539,6 +590,18 @@ function encodeGameCultNetworkingMessage(message: CultNetMessage): [number, unkn
       return [5, [message.name]];
     case "cultnet.sample.chat.v0":
       return [6, [message.text]];
+    case "cultnet.schema_catalog_request.v0":
+      return [7, [
+        message.messageId,
+        message.includeSchemaJson ?? false,
+        message.schemaIds ?? null,
+        message.kinds ?? null,
+      ]];
+    case "cultnet.schema_catalog_response.v0":
+      return [8, [
+        message.messageId,
+        message.schemas.map((schema) => encodeLegacySchemaDescriptor(schema)),
+      ]];
     default:
       throw new Error(
         `Message "${message.schemaVersion}" is not defined in the gamecult.networking.v0 contract.`,
@@ -560,6 +623,110 @@ function requireLegacyString(input: unknown, fieldName: string): string {
   }
 
   return input;
+}
+
+function requireLegacyBoolean(input: unknown, fieldName: string): boolean {
+  if (typeof input !== "boolean") {
+    throw new Error(`${fieldName} must be a boolean in gamecult.networking.v0.`);
+  }
+
+  return input;
+}
+
+function requireLegacyOptionalStringArray(input: unknown, fieldName: string): string[] | undefined {
+  if (input === null || typeof input === "undefined") {
+    return undefined;
+  }
+
+  if (!Array.isArray(input) || input.some((item) => typeof item !== "string")) {
+    throw new Error(`${fieldName} must be an array of strings in gamecult.networking.v0.`);
+  }
+
+  return input;
+}
+
+function requireLegacyOptionalSchemaKindArray(input: unknown, fieldName: string): CultNetSchemaKind[] | undefined {
+  const values = requireLegacyOptionalStringArray(input, fieldName);
+
+  if (!values) {
+    return undefined;
+  }
+
+  for (const value of values) {
+    if (value !== "wire_message" && value !== "document_payload" && value !== "shared_contract") {
+      throw new Error(`${fieldName} has unsupported schema kind "${value}".`);
+    }
+  }
+
+  return values as CultNetSchemaKind[];
+}
+
+function requireLegacySchemaDescriptorArray(input: unknown, fieldName: string): CultNetSchemaDescriptor[] {
+  if (!Array.isArray(input)) {
+    throw new Error(`${fieldName} must be an array in gamecult.networking.v0.`);
+  }
+
+  return input.map((value, index) => requireLegacySchemaDescriptor(value, `${fieldName}[${index}]`));
+}
+
+function requireLegacySchemaDescriptor(input: unknown, fieldName: string): CultNetSchemaDescriptor {
+  if (!input || typeof input !== "object") {
+    throw new Error(`${fieldName} must be an object in gamecult.networking.v0.`);
+  }
+
+  const candidate = input as Record<string, unknown>;
+  const schemaId = requireLegacyString(candidate.schemaId, `${fieldName}.SchemaId`);
+  const kind = requireLegacyString(candidate.kind, `${fieldName}.Kind`);
+  const wireContracts = requireLegacyOptionalStringArray(candidate.wireContracts, `${fieldName}.WireContracts`) ?? [];
+  const contentHash = requireLegacyString(candidate.contentHash, `${fieldName}.ContentHash`);
+  const schemaVersion = requireLegacyOptionalString(candidate.schemaVersion, `${fieldName}.SchemaVersion`);
+  const documentType = requireLegacyOptionalString(candidate.documentType, `${fieldName}.DocumentType`);
+  const title = requireLegacyOptionalString(candidate.title, `${fieldName}.Title`);
+  const schemaJson = requireLegacyOptionalString(candidate.schemaJson, `${fieldName}.SchemaJson`);
+
+  if (kind !== "wire_message" && kind !== "document_payload" && kind !== "shared_contract") {
+    throw new Error(`${fieldName}.Kind has unsupported schema kind "${kind}".`);
+  }
+
+  const normalizedWireContracts = wireContracts.map((value) => {
+    if (value !== "cultnet.schema.v0" && value !== "gamecult.networking.v0") {
+      throw new Error(`${fieldName}.WireContracts contains unsupported wire contract "${value}".`);
+    }
+
+    return value;
+  });
+
+  return {
+    schemaId,
+    kind,
+    schemaVersion,
+    documentType,
+    title,
+    wireContracts: normalizedWireContracts as CultNetWireContract[],
+    contentHash,
+    schemaJson,
+  };
+}
+
+function requireLegacyOptionalString(input: unknown, fieldName: string): string | undefined {
+  if (input === null || typeof input === "undefined") {
+    return undefined;
+  }
+
+  return requireLegacyString(input, fieldName);
+}
+
+function encodeLegacySchemaDescriptor(schema: CultNetSchemaDescriptor): Record<string, unknown> {
+  return {
+    schemaId: schema.schemaId,
+    kind: schema.kind,
+    schemaVersion: schema.schemaVersion ?? null,
+    documentType: schema.documentType ?? null,
+    title: schema.title ?? null,
+    wireContracts: schema.wireContracts,
+    contentHash: schema.contentHash,
+    schemaJson: schema.schemaJson ?? null,
+  };
 }
 
 function encodeBase64Url(input: Uint8Array): string {
@@ -599,5 +766,8 @@ export const cultNetSchemas = {
   documentDeleteSchema,
   snapshotRequestSchema,
   snapshotResponseSchema,
+  schemaDescriptorSchema,
+  schemaCatalogRequestSchema,
+  schemaCatalogResponseSchema,
   ghostlightAgentStateSchema,
 } as const;

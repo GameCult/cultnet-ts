@@ -16,8 +16,10 @@ import {
   CultNetClientSecurityOptions,
   CultNetDocumentRegistry,
   CultNetPeer,
+  CultNetSchemaRegistry,
   CultNetSecret,
   CultNetServerSecurityOptions,
+  cultNetBuiltinSchemaRegistry,
   defineCultNetDocumentBinding,
   encodeCultNetMessageForWire,
   ghostlightAgentStateGeneratedContract,
@@ -124,6 +126,56 @@ test("CultNet can round-trip gamecult.networking.v0 auth messages through the ex
 
   const decoded = parseCultNetMessage(wireValue, "gamecult.networking.v0");
   assert.deepEqual(decoded, message);
+});
+
+test("CultNet schema discovery catalog can advertise canonical schemas without inline bodies by default", () => {
+  const response = cultNetBuiltinSchemaRegistry.createCatalogResponse({
+    schemaVersion: "cultnet.schema_catalog_request.v0",
+    messageId: "catalog-1",
+  });
+
+  const ghostlight = response.schemas.find((schema) => schema.documentType === "ghostlight.agent-state");
+  assert.ok(ghostlight);
+  assert.equal(ghostlight?.kind, "document_payload");
+  assert.equal(ghostlight?.documentType, "ghostlight.agent-state");
+  assert.equal(typeof ghostlight?.contentHash, "string");
+  assert.equal(ghostlight?.schemaJson, undefined);
+});
+
+test("CultNet schema discovery can round-trip over the legacy wire contract when schemas are requested inline", () => {
+  const registry = new CultNetSchemaRegistry([
+    {
+      schemaId: "https://example.test/contracts/example.schema.json",
+      kind: "shared_contract",
+      schema: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        $id: "https://example.test/contracts/example.schema.json",
+        type: "object",
+        properties: {
+          value: { type: "string" },
+        },
+        required: ["value"],
+        additionalProperties: false,
+      },
+      title: "Example Schema",
+      wireContracts: ["cultnet.schema.v0", "gamecult.networking.v0"],
+    },
+  ]);
+
+  const response = registry.createCatalogResponse({
+    schemaVersion: "cultnet.schema_catalog_request.v0",
+    messageId: "catalog-legacy",
+    includeSchemaJson: true,
+  });
+
+  const wireValue = encodeCultNetMessageForWire(response, "gamecult.networking.v0");
+  const decoded = parseCultNetMessage(wireValue, "gamecult.networking.v0");
+  assert.equal(decoded.schemaVersion, "cultnet.schema_catalog_response.v0");
+  if (decoded.schemaVersion === "cultnet.schema_catalog_response.v0") {
+    assert.equal(decoded.messageId, "catalog-legacy");
+    assert.equal(decoded.schemas[0]?.schemaId, "https://example.test/contracts/example.schema.json");
+    assert.match(decoded.schemas[0]?.schemaJson ?? "", /"value"/u);
+  }
 });
 
 test("CultNet document registry builds snapshots and applies document puts through CultCache", async () => {

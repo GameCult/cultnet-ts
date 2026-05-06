@@ -15,6 +15,10 @@ export {
   type CultNetSampleChangeNameMessage,
   type CultNetSampleChatMessage,
   type CultNetSchemaVersion,
+  type CultNetSchemaCatalogRequestMessage,
+  type CultNetSchemaCatalogResponseMessage,
+  type CultNetSchemaDescriptor,
+  type CultNetSchemaKind,
   type CultNetSnapshotRequestMessage,
   type CultNetSnapshotResponseMessage,
   type CultNetVerifyMessage,
@@ -54,6 +58,12 @@ export {
   defineCultNetDocumentBinding,
   type CultNetDocumentBinding,
 } from "./replication";
+export {
+  CultNetSchemaRegistry,
+  cultNetBuiltinSchemaRegistry,
+  type CultNetSchemaCatalogOptions,
+  type CultNetSchemaRegistration,
+} from "./schema-discovery";
 export {
   CultNetClientSecurityOptions,
   CultNetSecret,

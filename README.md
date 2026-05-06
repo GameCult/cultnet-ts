@@ -19,6 +19,8 @@ The library currently includes:
 - session-token signing/validation compatible with the C# CultLib semantics
 - explicit wire-contract selection instead of heuristic payload guessing
 - `CultCacheTS` replication helpers for document put/delete/snapshot flows
+- schema discovery catalog messages and a registry for asking what contracts a
+  peer can actually exchange safely
 - generated TypeScript contracts and runtime verifiers from canonical JSON
   schemas owned elsewhere in the swarm
 - an exact mirrored runtime validator and generated TS contract surface for
@@ -118,6 +120,32 @@ Current wire-contract options:
 
 So the transport can stay developer-friendly while the binary stops freelancing
 away from the C# lineage.
+
+## Schema Discovery
+
+Apps sharing a CultNet space should be able to ask each other what they can
+exchange without resorting to folklore.
+
+`cultnet-ts` now includes:
+
+- `cultnet.schema_catalog_request.v0`
+- `cultnet.schema_catalog_response.v0`
+- `CultNetSchemaRegistry`
+- `cultNetBuiltinSchemaRegistry`
+
+Descriptors include:
+
+- canonical `schemaId`
+- discovery `kind`
+- optional `schemaVersion`
+- optional `documentType`
+- supported `wireContracts`
+- a SHA-256 `contentHash`
+- optional inline `schemaJson`
+
+The inline schema body travels as canonical JSON text, not as a loose object
+graph. Discovery is supposed to reduce ambiguity, not smuggle in a cute new
+polymorphic attack surface.
 
 ## Quick Example
 

@@ -3,7 +3,7 @@ import type { Duplex } from "node:stream";
 
 import { decode, encode } from "@msgpack/msgpack";
 
-import { encodeCultNetMessageForWire, parseCultNetMessage, type CultNetDocumentDeleteMessage, type CultNetDocumentPutMessage, type CultNetErrorMessage, type CultNetHelloMessage, type CultNetLoginMessage, type CultNetLoginSuccessMessage, type CultNetMessage, type CultNetRegisterMessage, type CultNetSampleChangeNameMessage, type CultNetSampleChatMessage, type CultNetSnapshotRequestMessage, type CultNetSnapshotResponseMessage, type CultNetVerifyMessage, type CultNetWireContract } from "./contracts";
+import { encodeCultNetMessageForWire, parseCultNetMessage, type CultNetDocumentDeleteMessage, type CultNetDocumentPutMessage, type CultNetErrorMessage, type CultNetHelloMessage, type CultNetLoginMessage, type CultNetLoginSuccessMessage, type CultNetMessage, type CultNetRegisterMessage, type CultNetSampleChangeNameMessage, type CultNetSampleChatMessage, type CultNetSchemaCatalogRequestMessage, type CultNetSchemaCatalogResponseMessage, type CultNetSnapshotRequestMessage, type CultNetSnapshotResponseMessage, type CultNetVerifyMessage, type CultNetWireContract } from "./contracts";
 import { encodeFrame, LengthPrefixedMessageFramer } from "./framing";
 
 export interface CultNetPeerEvents {
@@ -95,6 +95,14 @@ export class CultNetPeer extends EventEmitter {
   }
 
   sendSnapshotResponse(message: CultNetSnapshotResponseMessage): void {
+    this.send(message);
+  }
+
+  sendSchemaCatalogRequest(message: CultNetSchemaCatalogRequestMessage): void {
+    this.send(message);
+  }
+
+  sendSchemaCatalogResponse(message: CultNetSchemaCatalogResponseMessage): void {
     this.send(message);
   }
 
