@@ -485,6 +485,8 @@ export function parseCultNetMessage(input: unknown, wireContract: CultNetWireCon
     throw new Error("CultNet message is missing schemaVersion.");
   }
 
+  normalizeCultNetOptionalNulls(input as Record<string, unknown>, schemaVersion);
+
   const validator = cultNetValidators.get(schemaVersion);
   if (!validator) {
     throw new Error(`Unsupported CultNet schemaVersion "${schemaVersion}".`);
@@ -892,18 +894,51 @@ function requireNonEmptyString(input: unknown, instancePath: string): void {
 }
 
 function requireOptionalNonEmptyString(input: unknown, instancePath: string): void {
-  if (typeof input === "undefined") {
+  if (typeof input === "undefined" || input === null) {
     return;
   }
   requireNonEmptyString(input, instancePath);
 }
 
 function requireOptionalStringArray(input: unknown, instancePath: string): void {
-  if (typeof input === "undefined") {
+  if (typeof input === "undefined" || input === null) {
     return;
   }
   if (!Array.isArray(input) || input.some((item) => typeof item !== "string" || item.trim().length === 0)) {
     throw new Error(`Validation failed for raw CultNet document record: ${instancePath}: must be an array of non-empty strings`);
+  }
+}
+
+function normalizeCultNetOptionalNulls(
+  candidate: Record<string, unknown>,
+  schemaVersion: CultNetSchemaVersion,
+): void {
+  switch (schemaVersion) {
+    case "cultnet.hello.v0":
+      stripNullProperties(candidate, [
+        "agentId",
+        "role",
+        "displayName",
+        "supportedDocumentTypes",
+        "supportedMessageVersions",
+      ]);
+      return;
+    case "cultnet.snapshot_request.v0":
+      stripNullProperties(candidate, ["documentTypes", "documentKeys"]);
+      return;
+    case "cultnet.schema_catalog_request.v0":
+      stripNullProperties(candidate, ["schemaIds", "kinds"]);
+      return;
+    default:
+      return;
+  }
+}
+
+function stripNullProperties(candidate: Record<string, unknown>, keys: readonly string[]): void {
+  for (const key of keys) {
+    if (candidate[key] === null) {
+      delete candidate[key];
+    }
   }
 }
 

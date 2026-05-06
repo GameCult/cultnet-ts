@@ -12,7 +12,8 @@
     "contracts:generate": "node tools/generate-swarm-contracts.mjs",
     "build": "npm run contracts:generate && tsc -p tsconfig.json",
     "typecheck": "npm run contracts:generate && tsc -p tsconfig.json --pretty false",
-    "test": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js"
+    "test": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "test:interop": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/test/interop/*.test.js"
   },
   "keywords": [
     "messagepack",
