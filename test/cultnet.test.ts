@@ -19,8 +19,10 @@ import {
   CultNetSecret,
   CultNetServerSecurityOptions,
   defineCultNetDocumentBinding,
+  encodeCultNetMessageForWire,
   parseCultNetMessage,
   validateGhostlightAgentState,
+  type CultNetLoginMessage,
   type GhostlightAgentStateDocument,
 } from "../src";
 
@@ -73,8 +75,8 @@ test("CultNet secret helpers round-trip encrypted strings and validate sessions"
 
 test("CultNet peer frames and decodes typed messages over a direct pipe", async () => {
   const { a, b } = createDuplexPair();
-  const sender = new CultNetPeer(a);
-  const receiver = new CultNetPeer(b);
+  const sender = new CultNetPeer(a, { wireContract: "cultnet.schema.v0" });
+  const receiver = new CultNetPeer(b, { wireContract: "cultnet.schema.v0" });
 
   const message = await new Promise<ReturnType<typeof parseCultNetMessage>>((resolve, reject) => {
     receiver.once("message", resolve);
@@ -97,6 +99,28 @@ test("CultNet peer frames and decodes typed messages over a direct pipe", async 
 
   sender.close();
   receiver.close();
+});
+
+test("CultNet can round-trip gamecult.networking.v0 auth messages through the explicit legacy contract", () => {
+  const message: CultNetLoginMessage = {
+    schemaVersion: "cultnet.login.v0",
+    nonce: "bm9uY2U",
+    auth: "YXV0aA",
+    password: "cGFzc3dvcmQ",
+  };
+
+  const wireValue = encodeCultNetMessageForWire(message, "gamecult.networking.v0");
+  assert.deepEqual(wireValue, [
+    0,
+    [
+      Buffer.from("nonce", "utf8"),
+      Buffer.from("auth", "utf8"),
+      Buffer.from("password", "utf8"),
+    ],
+  ]);
+
+  const decoded = parseCultNetMessage(wireValue, "gamecult.networking.v0");
+  assert.deepEqual(decoded, message);
 });
 
 test("CultNet document registry builds snapshots and applies document puts through CultCache", async () => {

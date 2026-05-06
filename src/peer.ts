@@ -3,7 +3,7 @@ import type { Duplex } from "node:stream";
 
 import { decode, encode } from "@msgpack/msgpack";
 
-import { parseCultNetMessage, type CultNetDocumentDeleteMessage, type CultNetDocumentPutMessage, type CultNetErrorMessage, type CultNetHelloMessage, type CultNetLoginMessage, type CultNetLoginSuccessMessage, type CultNetMessage, type CultNetRegisterMessage, type CultNetSnapshotRequestMessage, type CultNetSnapshotResponseMessage, type CultNetVerifyMessage } from "./contracts";
+import { encodeCultNetMessageForWire, parseCultNetMessage, type CultNetDocumentDeleteMessage, type CultNetDocumentPutMessage, type CultNetErrorMessage, type CultNetHelloMessage, type CultNetLoginMessage, type CultNetLoginSuccessMessage, type CultNetMessage, type CultNetRegisterMessage, type CultNetSampleChangeNameMessage, type CultNetSampleChatMessage, type CultNetSnapshotRequestMessage, type CultNetSnapshotResponseMessage, type CultNetVerifyMessage, type CultNetWireContract } from "./contracts";
 import { encodeFrame, LengthPrefixedMessageFramer } from "./framing";
 
 export interface CultNetPeerEvents {
@@ -13,18 +13,28 @@ export interface CultNetPeerEvents {
   error: (error: Error) => void;
 }
 
+export interface CultNetPeerOptions {
+  wireContract: CultNetWireContract;
+}
+
 export class CultNetPeer extends EventEmitter {
   readonly #stream: Duplex;
   readonly #framer = new LengthPrefixedMessageFramer();
+  readonly #wireContract: CultNetWireContract;
 
-  constructor(stream: Duplex) {
+  constructor(stream: Duplex, options: CultNetPeerOptions) {
     super();
+    if (!options?.wireContract) {
+      throw new Error("CultNetPeer requires an explicit wireContract.");
+    }
+
     this.#stream = stream;
+    this.#wireContract = options.wireContract;
     this.#stream.on("data", (chunk: Buffer) => {
       for (const frame of this.#framer.push(chunk)) {
         try {
           const decoded = decode(frame);
-          const message = parseCultNetMessage(decoded);
+          const message = parseCultNetMessage(decoded, this.#wireContract);
           this.emit("message", message);
         } catch (error) {
           this.emit("invalidMessage", error instanceof Error ? error : new Error(String(error)));
@@ -36,7 +46,8 @@ export class CultNetPeer extends EventEmitter {
   }
 
   send(message: CultNetMessage): void {
-    this.#stream.write(encodeFrame(encode(message)));
+    const wireValue = encodeCultNetMessageForWire(message, this.#wireContract);
+    this.#stream.write(encodeFrame(encode(wireValue)));
   }
 
   sendHello(message: CultNetHelloMessage): void {
@@ -60,6 +71,14 @@ export class CultNetPeer extends EventEmitter {
   }
 
   sendError(message: CultNetErrorMessage): void {
+    this.send(message);
+  }
+
+  sendSampleChangeName(message: CultNetSampleChangeNameMessage): void {
+    this.send(message);
+  }
+
+  sendSampleChat(message: CultNetSampleChatMessage): void {
     this.send(message);
   }
 

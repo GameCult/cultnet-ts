@@ -7,11 +7,15 @@ import registerSchema from "../contracts/cultnet.register.schema.json";
 import verifySchema from "../contracts/cultnet.verify.schema.json";
 import loginSuccessSchema from "../contracts/cultnet.login-success.schema.json";
 import errorSchema from "../contracts/cultnet.error.schema.json";
+import sampleChangeNameSchema from "../contracts/cultnet.sample-change-name.schema.json";
+import sampleChatSchema from "../contracts/cultnet.sample-chat.schema.json";
 import documentPutSchema from "../contracts/cultnet.document-put.schema.json";
 import documentDeleteSchema from "../contracts/cultnet.document-delete.schema.json";
 import snapshotRequestSchema from "../contracts/cultnet.snapshot-request.schema.json";
 import snapshotResponseSchema from "../contracts/cultnet.snapshot-response.schema.json";
 import ghostlightAgentStateSchema from "../contracts/ghostlight.agent-state.schema.json";
+
+export type CultNetWireContract = "cultnet.schema.v0" | "gamecult.networking.v0";
 
 export type CultNetSchemaVersion =
   | "cultnet.hello.v0"
@@ -20,6 +24,8 @@ export type CultNetSchemaVersion =
   | "cultnet.verify.v0"
   | "cultnet.login_success.v0"
   | "cultnet.error.v0"
+  | "cultnet.sample.change_name.v0"
+  | "cultnet.sample.chat.v0"
   | "cultnet.document_put.v0"
   | "cultnet.document_delete.v0"
   | "cultnet.snapshot_request.v0"
@@ -78,6 +84,16 @@ export interface CultNetLoginSuccessMessage {
 export interface CultNetErrorMessage {
   schemaVersion: "cultnet.error.v0";
   error: string;
+}
+
+export interface CultNetSampleChangeNameMessage {
+  schemaVersion: "cultnet.sample.change_name.v0";
+  name: string;
+}
+
+export interface CultNetSampleChatMessage {
+  schemaVersion: "cultnet.sample.chat.v0";
+  text: string;
 }
 
 export interface CultNetDocumentPutMessage<TPayload = unknown> {
@@ -339,6 +355,8 @@ export type CultNetMessage =
   | CultNetVerifyMessage
   | CultNetLoginSuccessMessage
   | CultNetErrorMessage
+  | CultNetSampleChangeNameMessage
+  | CultNetSampleChatMessage
   | CultNetDocumentPutMessage
   | CultNetDocumentDeleteMessage
   | CultNetSnapshotRequestMessage
@@ -356,6 +374,8 @@ const CULTNET_MESSAGE_SCHEMAS = [
   verifySchema,
   loginSuccessSchema,
   errorSchema,
+  sampleChangeNameSchema,
+  sampleChatSchema,
   documentPutSchema,
   documentDeleteSchema,
   snapshotRequestSchema,
@@ -374,7 +394,11 @@ for (const schema of CULTNET_MESSAGE_SCHEMAS) {
 
 const ghostlightAgentStateValidator = ajv.compile(ghostlightAgentStateSchema);
 
-export function parseCultNetMessage(input: unknown): CultNetMessage {
+export function parseCultNetMessage(input: unknown, wireContract: CultNetWireContract = "cultnet.schema.v0"): CultNetMessage {
+  if (wireContract === "gamecult.networking.v0") {
+    return parseGameCultNetworkingMessage(input);
+  }
+
   if (!input || typeof input !== "object") {
     throw new Error("CultNet message must be an object.");
   }
@@ -396,6 +420,17 @@ export function parseCultNetMessage(input: unknown): CultNetMessage {
   return input as CultNetMessage;
 }
 
+export function encodeCultNetMessageForWire(
+  message: CultNetMessage,
+  wireContract: CultNetWireContract = "cultnet.schema.v0",
+): unknown {
+  if (wireContract === "gamecult.networking.v0") {
+    return encodeGameCultNetworkingMessage(message);
+  }
+
+  return message;
+}
+
 export function validateGhostlightAgentState(input: unknown): GhostlightAgentStateDocument {
   if (!ghostlightAgentStateValidator(input)) {
     throw new Error(renderValidationErrors("ghostlight.agent_state.v0", ghostlightAgentStateValidator));
@@ -412,6 +447,145 @@ function renderValidationErrors(schemaVersion: string, validator: ValidateFuncti
   return `Validation failed for ${schemaVersion}: ${details.join("; ")}`;
 }
 
+function parseGameCultNetworkingMessage(input: unknown): CultNetMessage {
+  if (!Array.isArray(input) || input.length !== 2) {
+    throw new Error("gamecult.networking.v0 messages must be a 2-element union array.");
+  }
+
+  const [unionTag, payload] = input;
+  if (!Number.isInteger(unionTag)) {
+    throw new Error("gamecult.networking.v0 message tag must be an integer.");
+  }
+  if (!Array.isArray(payload)) {
+    throw new Error("gamecult.networking.v0 message payload must be an array.");
+  }
+
+  switch (unionTag) {
+    case 0:
+      return {
+        schemaVersion: "cultnet.login.v0",
+        nonce: requireLegacyBytes(payload[0], "LoginMessage.Nonce"),
+        auth: requireLegacyBytes(payload[1], "LoginMessage.Auth"),
+        password: requireLegacyBytes(payload[2], "LoginMessage.Password"),
+      };
+    case 1:
+      return {
+        schemaVersion: "cultnet.register.v0",
+        nonce: requireLegacyBytes(payload[0], "RegisterMessage.Nonce"),
+        email: requireLegacyBytes(payload[1], "RegisterMessage.Email"),
+        password: requireLegacyBytes(payload[2], "RegisterMessage.Password"),
+        name: requireLegacyBytes(payload[3], "RegisterMessage.Name"),
+      };
+    case 2:
+      return {
+        schemaVersion: "cultnet.verify.v0",
+        nonce: requireLegacyBytes(payload[0], "VerifyMessage.Nonce"),
+        session: requireLegacyBytes(payload[1], "VerifyMessage.Session"),
+      };
+    case 3:
+      return {
+        schemaVersion: "cultnet.login_success.v0",
+        nonce: requireLegacyBytes(payload[0], "LoginSuccessMessage.Nonce"),
+        session: requireLegacyBytes(payload[1], "LoginSuccessMessage.Session"),
+      };
+    case 4:
+      return {
+        schemaVersion: "cultnet.error.v0",
+        error: requireLegacyString(payload[0], "ErrorMessage.Error"),
+      };
+    case 5:
+      return {
+        schemaVersion: "cultnet.sample.change_name.v0",
+        name: requireLegacyString(payload[0], "ChangeNameMessage.Name"),
+      };
+    case 6:
+      return {
+        schemaVersion: "cultnet.sample.chat.v0",
+        text: requireLegacyString(payload[0], "ChatMessage.Text"),
+      };
+    default:
+      throw new Error(`Unsupported gamecult.networking.v0 union tag "${unionTag}".`);
+  }
+}
+
+function encodeGameCultNetworkingMessage(message: CultNetMessage): [number, unknown[]] {
+  switch (message.schemaVersion) {
+    case "cultnet.login.v0":
+      return [0, [
+        decodeBase64Url(message.nonce, "LoginMessage.Nonce"),
+        decodeBase64Url(message.auth, "LoginMessage.Auth"),
+        decodeBase64Url(message.password, "LoginMessage.Password"),
+      ]];
+    case "cultnet.register.v0":
+      return [1, [
+        decodeBase64Url(message.nonce, "RegisterMessage.Nonce"),
+        decodeBase64Url(message.email, "RegisterMessage.Email"),
+        decodeBase64Url(message.password, "RegisterMessage.Password"),
+        decodeBase64Url(message.name, "RegisterMessage.Name"),
+      ]];
+    case "cultnet.verify.v0":
+      return [2, [
+        decodeBase64Url(message.nonce, "VerifyMessage.Nonce"),
+        decodeBase64Url(message.session, "VerifyMessage.Session"),
+      ]];
+    case "cultnet.login_success.v0":
+      return [3, [
+        decodeBase64Url(message.nonce, "LoginSuccessMessage.Nonce"),
+        decodeBase64Url(message.session, "LoginSuccessMessage.Session"),
+      ]];
+    case "cultnet.error.v0":
+      return [4, [message.error]];
+    case "cultnet.sample.change_name.v0":
+      return [5, [message.name]];
+    case "cultnet.sample.chat.v0":
+      return [6, [message.text]];
+    default:
+      throw new Error(
+        `Message "${message.schemaVersion}" is not defined in the gamecult.networking.v0 contract.`,
+      );
+  }
+}
+
+function requireLegacyBytes(input: unknown, fieldName: string): string {
+  if (!(input instanceof Uint8Array)) {
+    throw new Error(`${fieldName} must be binary data in gamecult.networking.v0.`);
+  }
+
+  return encodeBase64Url(input);
+}
+
+function requireLegacyString(input: unknown, fieldName: string): string {
+  if (typeof input !== "string") {
+    throw new Error(`${fieldName} must be a string in gamecult.networking.v0.`);
+  }
+
+  return input;
+}
+
+function encodeBase64Url(input: Uint8Array): string {
+  return Buffer.from(input)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/u, "");
+}
+
+function decodeBase64Url(input: string, fieldName: string): Uint8Array {
+  if (!input || input.trim().length === 0) {
+    throw new Error(`${fieldName} must be a non-empty base64url string.`);
+  }
+
+  const normalized = input
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const remainder = normalized.length % 4;
+  const padded = remainder === 0
+    ? normalized
+    : normalized + "=".repeat(4 - remainder);
+
+  return Buffer.from(padded, "base64");
+}
+
 export const cultNetSchemas = {
   helloSchema,
   loginSchema,
@@ -419,6 +593,8 @@ export const cultNetSchemas = {
   verifySchema,
   loginSuccessSchema,
   errorSchema,
+  sampleChangeNameSchema,
+  sampleChatSchema,
   documentPutSchema,
   documentDeleteSchema,
   snapshotRequestSchema,

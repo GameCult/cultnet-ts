@@ -17,6 +17,7 @@ The library currently includes:
 - a `CultNetPeer` wrapper over any Node `Duplex`
 - CultLib-style client/server security options and `Secret` helpers
 - session-token signing/validation compatible with the C# CultLib semantics
+- explicit wire-contract selection instead of heuristic payload guessing
 - `CultCacheTS` replication helpers for document put/delete/snapshot flows
 - an exact mirrored runtime validator and TS contract surface for Ghostlight's
   canonical `ghostlight.agent_state.v0` payload
@@ -55,6 +56,8 @@ Current message families:
 - `cultnet.document_delete.v0`
 - `cultnet.snapshot_request.v0`
 - `cultnet.snapshot_response.v0`
+- `cultnet.sample.change_name.v0`
+- `cultnet.sample.chat.v0`
 
 For shared agent state, the first payload contract is the existing Ghostlight
 fixture format:
@@ -64,6 +67,24 @@ fixture format:
 
 That means `EpiphanyAgent` role dossiers and Ghostlight fixtures can travel over
 CultNet without inventing a second ontology first.
+
+## Wire Contracts
+
+`cultnet-ts` does not sniff random payloads and pretend that counts as rigor.
+You choose the contract explicitly.
+
+Current wire-contract options:
+
+- `cultnet.schema.v0`
+  - the newer schema-versioned object contract for CultNet-native message
+    families such as hello, document replication, and snapshots
+- `gamecult.networking.v0`
+  - the legacy C# `GameCult.Networking` MessagePack union contract for
+    login/register/verify/session/error plus the sample `ChangeNameMessage` and
+    `ChatMessage` payloads
+
+So the transport can stay developer-friendly while the binary stops freelancing
+away from the C# lineage.
 
 ## Quick Example
 
@@ -97,6 +118,10 @@ const registry = new CultNetDocumentRegistry([
     payloadSchemaVersion: "ghostlight.agent_state.v0",
   }),
 ]);
+
+const peer = new CultNetPeer(stream, {
+  wireContract: "cultnet.schema.v0",
+});
 ```
 
 ## Security Model
@@ -112,6 +137,10 @@ The security helpers intentionally mirror CultLib's shape:
 That means a TypeScript runtime can follow the same cryptographic and session
 story as the C# version instead of inventing one more house religion around
 "trust me, this pipe is probably fine."
+
+For the legacy `gamecult.networking.v0` contract, `cultnet-ts` normalizes the
+encrypted binary fields as base64url strings in the ergonomic TS surface and
+maps them back to the exact C# union payload shape at the wire boundary.
 
 ## Current Limits
 
