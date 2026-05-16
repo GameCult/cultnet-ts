@@ -38,6 +38,7 @@ export function defineCultNetDocumentBinding<
 
 export class CultNetDocumentRegistry {
   readonly #bindings = new Map<string, CultNetDocumentBinding>();
+  readonly #schemaBindings = new Map<string, CultNetDocumentBinding>();
 
   constructor(bindings: Iterable<CultNetDocumentBinding> = []) {
     for (const binding of bindings) {
@@ -47,11 +48,16 @@ export class CultNetDocumentRegistry {
 
   register(binding: CultNetDocumentBinding): this {
     this.#bindings.set(binding.definition.type, binding);
+    this.#schemaBindings.set(schemaIdForBinding(binding), binding);
     return this;
   }
 
   get(documentType: string): CultNetDocumentBinding | undefined {
     return this.#bindings.get(documentType);
+  }
+
+  getBySchemaId(schemaId: string): CultNetDocumentBinding | undefined {
+    return this.#schemaBindings.get(schemaId);
   }
 
   createDocumentPutMessage<TDefinition extends AnyCultCacheDocumentDefinition>(
@@ -72,10 +78,9 @@ export class CultNetDocumentRegistry {
       schemaVersion: "cultnet.document_put.v0",
       messageId,
       document: {
-        documentType: binding.definition.type,
-        documentKey,
+        schemaId: schemaIdForBinding(binding),
+        recordKey: documentKey,
         storedAt: options.storedAt ?? new Date().toISOString(),
-        payloadSchemaVersion: resolvePayloadSchemaVersion(binding, parsed),
         payload: parsed,
         sourceRuntimeId: options.sourceRuntimeId,
         sourceAgentId: options.sourceAgentId,
@@ -87,14 +92,14 @@ export class CultNetDocumentRegistry {
 
   createDocumentDeleteMessage(
     messageId: string,
-    documentType: string,
-    documentKey: string,
+    schemaId: string,
+    recordKey: string,
   ): CultNetDocumentDeleteMessage {
     return {
       schemaVersion: "cultnet.document_delete.v0",
       messageId,
-      documentType,
-      documentKey,
+      schemaId,
+      recordKey,
     };
   }
 
@@ -114,12 +119,15 @@ export class CultNetDocumentRegistry {
     messageId: string,
     filter?: CultNetSnapshotRequestMessage,
   ): CultNetSnapshotResponseMessage {
-    const requestedTypes = filter?.documentTypes ? new Set(filter.documentTypes) : undefined;
-    const requestedKeys = filter?.documentKeys ? new Set(filter.documentKeys) : undefined;
+    const requestedSchemaIds = filter?.schemaIds ? new Set(filter.schemaIds) : undefined;
+    const requestedKeys = filter?.recordKeys ? new Set(filter.recordKeys) : undefined;
     const documents: CultNetDocumentRecord[] = [];
 
     for (const envelope of cache.snapshot()) {
-      if (requestedTypes && !requestedTypes.has(envelope.type)) {
+      const binding = this.#requireBinding(envelope.type);
+      const schemaId = schemaIdForEnvelope(envelope, binding);
+
+      if (requestedSchemaIds && !requestedSchemaIds.has(schemaId)) {
         continue;
       }
 
@@ -127,13 +135,11 @@ export class CultNetDocumentRegistry {
         continue;
       }
 
-      const binding = this.#requireBinding(envelope.type);
       const payload = decodeDocumentValue(binding.definition, envelope.payload);
       documents.push({
-        documentType: envelope.type,
-        documentKey: envelope.key,
+        schemaId,
+        recordKey: envelope.key,
         storedAt: envelope.storedAt,
-        payloadSchemaVersion: resolvePayloadSchemaVersion(binding, payload),
         payload,
       });
     }
@@ -150,12 +156,15 @@ export class CultNetDocumentRegistry {
     messageId: string,
     filter?: CultNetSnapshotRequestMessage,
   ): CultNetSnapshotResponseRawMessage {
-    const requestedTypes = filter?.documentTypes ? new Set(filter.documentTypes) : undefined;
-    const requestedKeys = filter?.documentKeys ? new Set(filter.documentKeys) : undefined;
+    const requestedSchemaIds = filter?.schemaIds ? new Set(filter.schemaIds) : undefined;
+    const requestedKeys = filter?.recordKeys ? new Set(filter.recordKeys) : undefined;
     const documents: CultNetRawDocumentRecord[] = [];
 
     for (const envelope of cache.snapshot()) {
-      if (requestedTypes && !requestedTypes.has(envelope.type)) {
+      const binding = this.#requireBinding(envelope.type);
+      const schemaId = schemaIdForEnvelope(envelope, binding);
+
+      if (requestedSchemaIds && !requestedSchemaIds.has(schemaId)) {
         continue;
       }
 
@@ -177,10 +186,10 @@ export class CultNetDocumentRegistry {
     cache: CultCache,
     message: CultNetDocumentPutMessage,
   ): Promise<unknown> {
-    const binding = this.#requireBinding(message.document.documentType);
+    const binding = this.#requireSchemaBinding(message.document.schemaId);
     return cache.put(
       binding.definition,
-      message.document.documentKey,
+      message.document.recordKey,
       binding.definition.schema.parse(message.document.payload),
     );
   }
@@ -189,18 +198,19 @@ export class CultNetDocumentRegistry {
     cache: CultCache,
     message: CultNetDocumentDeleteMessage,
   ): Promise<boolean> {
-    const binding = this.#requireBinding(message.documentType);
-    return cache.delete(binding.definition, message.documentKey);
+    const binding = this.#requireSchemaBinding(message.schemaId);
+    return cache.delete(binding.definition, message.recordKey);
   }
 
   async applyRawDocumentPutMessage(
     cache: CultCache,
     message: CultNetDocumentPutRawMessage,
   ): Promise<unknown> {
-    const binding = this.#requireBinding(message.document.documentType);
+    const binding = this.#requireSchemaBinding(message.document.schemaId);
     return cache.putEnvelope(binding.definition, {
-      key: message.document.documentKey,
-      type: message.document.documentType,
+      key: message.document.recordKey,
+      type: binding.definition.type,
+      schemaId: message.document.schemaId,
       payload: new Uint8Array(message.document.payload),
       storedAt: message.document.storedAt,
     });
@@ -241,19 +251,36 @@ export class CultNetDocumentRegistry {
     return binding;
   }
 
+  #requireSchemaBinding(schemaId: string): CultNetDocumentBinding {
+    const binding = this.getBySchemaId(schemaId);
+    if (!binding) {
+      throw new Error(`No CultNet document binding is registered for schema "${schemaId}".`);
+    }
+
+    return binding;
+  }
+
   #createRawDocumentRecord(envelope: CultCacheEnvelope): CultNetRawDocumentRecord {
     const binding = this.#requireBinding(envelope.type);
     return {
-      documentType: envelope.type,
-      documentKey: envelope.key,
+      schemaId: schemaIdForEnvelope(envelope, binding),
+      recordKey: envelope.key,
       storedAt: envelope.storedAt,
-      payloadSchemaVersion: typeof binding.payloadSchemaVersion === "string"
-        ? binding.payloadSchemaVersion
-        : undefined,
       payloadEncoding: "messagepack",
       payload: new Uint8Array(envelope.payload),
     };
   }
+}
+
+function schemaIdForBinding(binding: CultNetDocumentBinding): string {
+  return binding.definition.schemaId ?? binding.definition.type;
+}
+
+function schemaIdForEnvelope(
+  envelope: CultCacheEnvelope,
+  binding: CultNetDocumentBinding,
+): string {
+  return envelope.schemaId ?? schemaIdForBinding(binding);
 }
 
 function resolvePayloadSchemaVersion<TDefinition extends AnyCultCacheDocumentDefinition>(

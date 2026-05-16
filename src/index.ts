@@ -4,6 +4,7 @@ export {
   parseCultNetMessage,
   validateGhostlightAgentState,
   type CultNetDocumentDeleteMessage,
+  type CultNetDocumentMutationContract,
   type CultNetDocumentPutMessage,
   type CultNetDocumentPutRawMessage,
   type CultNetDocumentRecord,

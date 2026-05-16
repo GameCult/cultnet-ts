@@ -13,6 +13,7 @@ import documentPutSchema from "../contracts/cultnet.document-put.schema.json";
 import documentDeleteSchema from "../contracts/cultnet.document-delete.schema.json";
 import rawDocumentRecordSchema from "../contracts/cultnet.raw-document-record.schema.json";
 import documentPutRawSchema from "../contracts/cultnet.document-put-raw.schema.json";
+import documentMutationContractSchema from "../contracts/cultnet.document-mutation-contract.schema.json";
 import snapshotRequestSchema from "../contracts/cultnet.snapshot-request.schema.json";
 import snapshotResponseSchema from "../contracts/cultnet.snapshot-response.schema.json";
 import snapshotResponseRawSchema from "../contracts/cultnet.snapshot-response-raw.schema.json";
@@ -44,11 +45,20 @@ export type CultNetSchemaVersion =
 export type CultNetSchemaKind = "wire_message" | "document_payload" | "shared_contract";
 export type CultNetRawPayloadEncoding = "messagepack";
 
-export interface CultNetDocumentRecord<TPayload = unknown> {
+export interface CultNetDocumentMutationContract {
   documentType: string;
-  documentKey: string;
-  storedAt: string;
   payloadSchemaVersion?: string;
+  operations: string[];
+  authority: "readOnly" | "localUser" | "coordinator" | "runtime" | "denied";
+  intentDocumentTypes?: string[];
+  receiptDocumentTypes?: string[];
+  notes?: string[];
+}
+
+export interface CultNetDocumentRecord<TPayload = unknown> {
+  schemaId: string;
+  recordKey: string;
+  storedAt: string;
   payload: TPayload;
   sourceRuntimeId?: string;
   sourceAgentId?: string;
@@ -64,6 +74,7 @@ export interface CultNetHelloMessage {
   role?: string;
   displayName?: string;
   supportedDocumentTypes?: string[];
+  supportedMutationContracts?: CultNetDocumentMutationContract[];
   supportedMessageVersions?: string[];
   supportsSchemaCatalog?: boolean;
 }
@@ -119,15 +130,14 @@ export interface CultNetDocumentPutMessage<TPayload = unknown> {
 export interface CultNetDocumentDeleteMessage {
   schemaVersion: "cultnet.document_delete.v0";
   messageId: string;
-  documentType: string;
-  documentKey: string;
+  schemaId: string;
+  recordKey: string;
 }
 
 export interface CultNetRawDocumentRecord {
-  documentType: string;
-  documentKey: string;
+  schemaId: string;
+  recordKey: string;
   storedAt: string;
-  payloadSchemaVersion?: string;
   payloadEncoding: CultNetRawPayloadEncoding;
   payload: Uint8Array;
   sourceRuntimeId?: string;
@@ -145,8 +155,8 @@ export interface CultNetDocumentPutRawMessage {
 export interface CultNetSnapshotRequestMessage {
   schemaVersion: "cultnet.snapshot_request.v0";
   messageId: string;
-  documentTypes?: string[];
-  documentKeys?: string[];
+  schemaIds?: string[];
+  recordKeys?: string[];
 }
 
 export interface CultNetSnapshotResponseMessage<TPayload = unknown> {
@@ -458,6 +468,7 @@ const cultNetValidators = new Map<CultNetSchemaVersion, ValidateFunction>();
 for (const schema of [
   documentRecordSchema,
   rawDocumentRecordSchema,
+  documentMutationContractSchema,
   schemaDescriptorSchema,
   ...CULTNET_MESSAGE_SCHEMAS,
 ]) {
@@ -860,17 +871,9 @@ function validateRawDocumentRecord(
   }
 
   const candidate = input as Record<string, unknown>;
-  requireNonEmptyString(candidate.documentType, `${instancePath}/documentType`);
-  requireNonEmptyString(candidate.documentKey, `${instancePath}/documentKey`);
+  requireNonEmptyString(candidate.schemaId, `${instancePath}/schemaId`);
+  requireNonEmptyString(candidate.recordKey, `${instancePath}/recordKey`);
   requireNonEmptyString(candidate.storedAt, `${instancePath}/storedAt`);
-  if (
-    typeof candidate.payloadSchemaVersion !== "undefined"
-    && typeof candidate.payloadSchemaVersion !== "string"
-  ) {
-    throw new Error(
-      `Validation failed for raw CultNet document record: ${instancePath}/payloadSchemaVersion: must be a string`,
-    );
-  }
   if (candidate.payloadEncoding !== "messagepack") {
     throw new Error(
       `Validation failed for raw CultNet document record: ${instancePath}/payloadEncoding: must equal messagepack`,
@@ -920,11 +923,12 @@ function normalizeCultNetOptionalNulls(
         "role",
         "displayName",
         "supportedDocumentTypes",
+        "supportedMutationContracts",
         "supportedMessageVersions",
       ]);
       return;
     case "cultnet.snapshot_request.v0":
-      stripNullProperties(candidate, ["documentTypes", "documentKeys"]);
+      stripNullProperties(candidate, ["schemaIds", "recordKeys"]);
       return;
     case "cultnet.schema_catalog_request.v0":
       stripNullProperties(candidate, ["schemaIds", "kinds"]);
@@ -955,6 +959,7 @@ export const cultNetSchemas = {
   documentDeleteSchema,
   rawDocumentRecordSchema,
   documentPutRawSchema,
+  documentMutationContractSchema,
   snapshotRequestSchema,
   snapshotResponseSchema,
   snapshotResponseRawSchema,

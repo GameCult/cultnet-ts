@@ -19,6 +19,7 @@ import {
   CultNetSchemaRegistry,
   CultNetSecret,
   CultNetServerSecurityOptions,
+  cultNetSchemas,
   cultNetBuiltinSchemaRegistry,
   defineCultNetDocumentBinding,
   encodeCultNetMessageForWire,
@@ -184,6 +185,9 @@ test("CultNet document registry builds snapshots and applies document puts throu
   try {
     const documentDefinition = defineDocumentType({
       type: "ghostlight.agent-state",
+      schemaId: cultNetSchemas.ghostlightAgentStateSchema.$id,
+      schemaName: "ghostlight.agent-state",
+      schemaVersion: "ghostlight.agent_state.v0",
       schema: z.custom<GhostlightAgentStateDocument>((value) => {
         try {
           validateGhostlightAgentState(value);
@@ -271,6 +275,9 @@ test("CultNet raw replication preserves CultCache payload bytes for bit-compatib
   try {
     const documentDefinition = defineDocumentType({
       type: "ghostlight.agent-state",
+      schemaId: cultNetSchemas.ghostlightAgentStateSchema.$id,
+      schemaName: "ghostlight.agent-state",
+      schemaVersion: "ghostlight.agent_state.v0",
       schema: z.custom<GhostlightAgentStateDocument>((value) => {
         try {
           validateGhostlightAgentState(value);
@@ -339,6 +346,8 @@ test("CultNet raw replication preserves CultCache payload bytes for bit-compatib
 
     await originCache.put(documentDefinition, "epiphany.face", payload);
     const rawSnapshot = registry.createRawSnapshotResponse(originCache, "raw-snapshot-1");
+    assert.equal(rawSnapshot.documents[0]?.schemaId, cultNetSchemas.ghostlightAgentStateSchema.$id);
+    assert.equal(rawSnapshot.documents[0]?.recordKey, "epiphany.face");
     await registry.applyRawSnapshotResponse(targetCache, rawSnapshot);
 
     const sourceEnvelope = originCache.getRequiredEnvelope(documentDefinition, "epiphany.face");

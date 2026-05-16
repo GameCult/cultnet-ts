@@ -81,6 +81,9 @@ async function serve(args: Map<string, string>): Promise<void> {
   const interopSchema = await loadInteropSchemaRegistration(schemaPath);
   const noteDocument = defineDocumentType({
     type: INTEROP_DOCUMENT_TYPE,
+    schemaId: interopSchema.schemaId,
+    schemaName: INTEROP_DOCUMENT_TYPE,
+    schemaVersion: INTEROP_SCHEMA_VERSION,
     schema: interopNoteSchema,
     formatter: createInteropFormatter(),
   });
@@ -390,6 +393,9 @@ async function dial(args: Map<string, string>): Promise<void> {
   const interopSchema = await loadInteropSchemaRegistration(schemaPath);
   const noteDocument = defineDocumentType({
     type: INTEROP_DOCUMENT_TYPE,
+    schemaId: interopSchema.schemaId,
+    schemaName: INTEROP_DOCUMENT_TYPE,
+    schemaVersion: INTEROP_SCHEMA_VERSION,
     schema: interopNoteSchema,
     formatter: createInteropFormatter(),
   });
@@ -430,7 +436,7 @@ async function dial(args: Map<string, string>): Promise<void> {
   const snapshotRequest: CultNetSnapshotRequestMessage = {
     schemaVersion: "cultnet.snapshot_request.v0",
     messageId: `${runtimeId}-snapshot`,
-    documentTypes: [INTEROP_DOCUMENT_TYPE],
+    schemaIds: [interopSchema.schemaId],
   };
   peer.sendSnapshotRequest(snapshotRequest);
   const snapshotResponse = await waitForMessage(peer, (message) => message.schemaVersion === "cultnet.snapshot_response_raw.v0", timeoutMs);
