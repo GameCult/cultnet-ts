@@ -31,6 +31,13 @@ import {
   type GhostlightAgentStateShape,
   type GhostlightAgentStateDocument,
 } from "../src";
+import {
+  INTEROP_SCHEMA_VERSION,
+  createInteropFormatter,
+  createLegacyInteropNoteFormatter,
+  createMismatchedInteropNoteFormatter,
+  type InteropNote,
+} from "./interop/cultnet-interop-shared";
 
 class LinkedDuplex extends Duplex {
   peer?: LinkedDuplex;
@@ -357,6 +364,26 @@ test("CultNet raw replication preserves CultCache payload bytes for bit-compatib
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
+});
+
+test("CultNet interop slot compatibility defaults missing trailing fields and rejects mismatched slots", () => {
+  const note: InteropNote = {
+    schemaVersion: INTEROP_SCHEMA_VERSION,
+    documentId: "note:compat",
+    authorRuntimeId: "compat-peer",
+    title: "Compatibility",
+    body: "Missing trailing fields are allowed when declared defaults cover them.",
+    tags: ["compat"],
+  };
+
+  assert.deepEqual(createInteropFormatter().decode(createLegacyInteropNoteFormatter().encode(note)), {
+    ...note,
+    tags: [],
+  });
+  assert.throws(
+    () => createInteropFormatter().decode(createMismatchedInteropNoteFormatter().encode(note)),
+    /Expected string/u,
+  );
 });
 
 test("Ghostlight contract mirror rejects nested payloads that violate the canonical schema", () => {

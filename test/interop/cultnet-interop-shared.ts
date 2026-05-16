@@ -6,6 +6,18 @@ import { z } from "zod";
 
 export const INTEROP_DOCUMENT_TYPE = "cultnet.interop-note";
 export const INTEROP_SCHEMA_VERSION = "cultnet.interop_note.v0";
+export const INTEROP_MUTATION_INTENT_DOCUMENT_TYPE = "cultnet.interop-note-mutation-intent";
+export const INTEROP_MUTATION_INTENT_SCHEMA_ID = "https://github.com/GameCult/cultnet-ts/integration/contracts/cultnet.interop-note-mutation-intent.schema.json";
+export const INTEROP_MUTATION_INTENT_SCHEMA_VERSION = "cultnet.interop_note_mutation_intent.v0";
+export const INTEROP_MUTATION_RECEIPT_DOCUMENT_TYPE = "cultnet.interop-note-mutation-receipt";
+export const INTEROP_MUTATION_RECEIPT_SCHEMA_ID = "https://github.com/GameCult/cultnet-ts/integration/contracts/cultnet.interop-note-mutation-receipt.schema.json";
+export const INTEROP_MUTATION_RECEIPT_SCHEMA_VERSION = "cultnet.interop_note_mutation_receipt.v0";
+export const INTEROP_FIRE_COMMAND_DOCUMENT_TYPE = "cultnet.interop-fire-weapon-command";
+export const INTEROP_FIRE_COMMAND_SCHEMA_ID = "https://github.com/GameCult/cultnet-ts/integration/contracts/cultnet.interop-fire-weapon-command.schema.json";
+export const INTEROP_FIRE_COMMAND_SCHEMA_VERSION = "cultnet.interop_fire_weapon_command.v0";
+export const INTEROP_FIRE_RECEIPT_DOCUMENT_TYPE = "cultnet.interop-fire-weapon-receipt";
+export const INTEROP_FIRE_RECEIPT_SCHEMA_ID = "https://github.com/GameCult/cultnet-ts/integration/contracts/cultnet.interop-fire-weapon-receipt.schema.json";
+export const INTEROP_FIRE_RECEIPT_SCHEMA_VERSION = "cultnet.interop_fire_weapon_receipt.v0";
 export const INTEROP_WIRE_CONTRACT = "cultnet.schema.v0" as const;
 export const DISCOVERY_PROBE_SCHEMA_VERSION = "cultnet.discovery_probe.v0";
 export const DISCOVERY_ANNOUNCE_SCHEMA_VERSION = "cultnet.discovery_announce.v0";
@@ -21,10 +33,167 @@ export const interopNoteSchema = z.object({
 
 export type InteropNote = z.infer<typeof interopNoteSchema>;
 
-export function createInteropFormatter(): {
-  encode(value: InteropNote): Uint8Array;
-  decode(payload: Uint8Array): InteropNote;
-} {
+export const interopMutationIntentSchema = z.object({
+  schemaVersion: z.literal(INTEROP_MUTATION_INTENT_SCHEMA_VERSION),
+  intentId: z.string().min(1),
+  targetDocumentId: z.string().min(1),
+  appendBody: z.string().min(1),
+  appendTag: z.string().min(1),
+});
+
+export type InteropMutationIntent = z.infer<typeof interopMutationIntentSchema>;
+
+export const interopMutationReceiptSchema = z.object({
+  schemaVersion: z.literal(INTEROP_MUTATION_RECEIPT_SCHEMA_VERSION),
+  intentId: z.string().min(1),
+  accepted: z.boolean(),
+  documentId: z.string().min(1),
+  body: z.string(),
+  tags: z.array(z.string().min(1)),
+  error: z.string().optional(),
+});
+
+export type InteropMutationReceipt = z.infer<typeof interopMutationReceiptSchema>;
+
+export const interopFireCommandSchema = z.object({
+  schemaVersion: z.literal(INTEROP_FIRE_COMMAND_SCHEMA_VERSION),
+  commandId: z.string().min(1),
+  characterId: z.string().min(1),
+  weaponId: z.string().min(1),
+});
+
+export type InteropFireCommand = z.infer<typeof interopFireCommandSchema>;
+
+export const interopFireReceiptSchema = z.object({
+  schemaVersion: z.literal(INTEROP_FIRE_RECEIPT_SCHEMA_VERSION),
+  commandId: z.string().min(1),
+  accepted: z.boolean(),
+  characterId: z.string().min(1),
+  weaponId: z.string().min(1),
+  shotsFired: z.number().int().nonnegative(),
+  ammoRemaining: z.number().int().nonnegative(),
+  error: z.string().optional(),
+});
+
+export type InteropFireReceipt = z.infer<typeof interopFireReceiptSchema>;
+
+export interface SlotFormatter<T> {
+  encode(value: T): Uint8Array;
+  decode(payload: Uint8Array): T;
+}
+
+export function createInteropFormatter(): SlotFormatter<InteropNote> {
+  return slotFormatter<InteropNote>("Interop note", 5, (value) => [
+    value.schemaVersion,
+    value.documentId,
+    value.authorRuntimeId,
+    value.title,
+    value.body,
+    value.tags,
+  ], ([schemaVersion, documentId, authorRuntimeId, title, body, tags]) => interopNoteSchema.parse({
+    schemaVersion,
+    documentId,
+    authorRuntimeId,
+    title,
+    body,
+    tags: Array.isArray(tags) ? tags : [],
+  }));
+}
+
+export function createInteropMutationIntentFormatter(): SlotFormatter<InteropMutationIntent> {
+  return slotFormatter<InteropMutationIntent>("Interop mutation intent", 5, (value) => [
+    value.schemaVersion,
+    value.intentId,
+    value.targetDocumentId,
+    value.appendBody,
+    value.appendTag,
+  ], ([schemaVersion, intentId, targetDocumentId, appendBody, appendTag]) => interopMutationIntentSchema.parse({
+    schemaVersion,
+    intentId,
+    targetDocumentId,
+    appendBody,
+    appendTag,
+  }));
+}
+
+export function createInteropMutationReceiptFormatter(): SlotFormatter<InteropMutationReceipt> {
+  return slotFormatter<InteropMutationReceipt>("Interop mutation receipt", 6, (value) => [
+    value.schemaVersion,
+    value.intentId,
+    value.accepted,
+    value.documentId,
+    value.body,
+    value.tags,
+    value.error,
+  ], ([schemaVersion, intentId, accepted, documentId, body, tags, error]) => interopMutationReceiptSchema.parse({
+    schemaVersion,
+    intentId,
+    accepted,
+    documentId,
+    body,
+    tags: Array.isArray(tags) ? tags : [],
+    error: typeof error === "string" ? error : undefined,
+  }));
+}
+
+export function createInteropFireCommandFormatter(): SlotFormatter<InteropFireCommand> {
+  return slotFormatter<InteropFireCommand>("Interop fire command", 4, (value) => [
+    value.schemaVersion,
+    value.commandId,
+    value.characterId,
+    value.weaponId,
+  ], ([schemaVersion, commandId, characterId, weaponId]) => interopFireCommandSchema.parse({
+    schemaVersion,
+    commandId,
+    characterId,
+    weaponId,
+  }));
+}
+
+export function createInteropFireReceiptFormatter(): SlotFormatter<InteropFireReceipt> {
+  return slotFormatter<InteropFireReceipt>("Interop fire receipt", 6, (value) => [
+    value.schemaVersion,
+    value.commandId,
+    value.accepted,
+    value.characterId,
+    value.weaponId,
+    value.shotsFired,
+    value.ammoRemaining,
+    value.error,
+  ], ([schemaVersion, commandId, accepted, characterId, weaponId, shotsFired, ammoRemaining, error]) => interopFireReceiptSchema.parse({
+    schemaVersion,
+    commandId,
+    accepted,
+    characterId,
+    weaponId,
+    shotsFired,
+    ammoRemaining,
+    error: typeof error === "string" ? error : undefined,
+  }));
+}
+
+function slotFormatter<T>(
+  name: string,
+  minimumSlots: number,
+  encodeSlots: (value: T) => unknown[],
+  decodeSlots: (slots: unknown[]) => T,
+): SlotFormatter<T> {
+  return {
+    encode(value: T): Uint8Array {
+      return encode(encodeSlots(value));
+    },
+    decode(payload: Uint8Array): T {
+      const decoded = decode(payload);
+      if (!Array.isArray(decoded) || decoded.length < minimumSlots) {
+        throw new Error(`${name} payload must be a MessagePack array with at least ${minimumSlots} slots.`);
+      }
+
+      return decodeSlots(decoded);
+    },
+  };
+}
+
+export function createLegacyInteropNoteFormatter(): SlotFormatter<InteropNote> {
   return {
     encode(value: InteropNote): Uint8Array {
       return encode([
@@ -33,25 +202,25 @@ export function createInteropFormatter(): {
         value.authorRuntimeId,
         value.title,
         value.body,
+      ]);
+    },
+    decode: createInteropFormatter().decode,
+  };
+}
+
+export function createMismatchedInteropNoteFormatter(): SlotFormatter<InteropNote> {
+  return {
+    encode(value: InteropNote): Uint8Array {
+      return encode([
+        value.schemaVersion,
+        value.documentId,
+        42,
+        value.title,
+        value.body,
         value.tags,
       ]);
     },
-    decode(payload: Uint8Array): InteropNote {
-      const decoded = decode(payload);
-      if (!Array.isArray(decoded) || decoded.length !== 6) {
-        throw new Error("Interop note payload must be a 6-slot MessagePack array.");
-      }
-
-      const [schemaVersion, documentId, authorRuntimeId, title, body, tags] = decoded;
-      return interopNoteSchema.parse({
-        schemaVersion,
-        documentId,
-        authorRuntimeId,
-        title,
-        body,
-        tags,
-      });
-    },
+    decode: createInteropFormatter().decode,
   };
 }
 

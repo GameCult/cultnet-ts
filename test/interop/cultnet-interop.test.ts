@@ -127,6 +127,9 @@ test("CultNet TS/Rust/C# peers discover each other and exchange raw state over t
   assert.equal(tsDial.remoteHello.runtimeId, "rust-peer");
   assert.equal(tsDial.hasInteropSchema, true);
   assert.equal(tsDial.retrievedNote.authorRuntimeId, "rust-peer");
+  assert.ok(tsDial.mutatedNote.tags.includes("decorated:ts-client"));
+  assert.equal(tsDial.mutationReceipt.accepted, true);
+  assert.equal(tsDial.fireReceipt.shotsFired, 1);
 
   const rustDial = await runJsonCommand("rust-dial", rustBinaryPath, [
     "dial",
@@ -141,6 +144,8 @@ test("CultNet TS/Rust/C# peers discover each other and exchange raw state over t
   assert.equal(rustDial.remoteHello.runtimeId, "csharp-peer");
   assert.equal(rustDial.hasInteropSchema, true);
   assert.equal(rustDial.retrievedNote.authorRuntimeId, "csharp-peer");
+  assert.ok(rustDial.mutatedNote.tags.includes("decorated:rust-client"));
+  assert.equal(rustDial.fireReceipt.ammoRemaining, 29);
 
   const csharpDial = await runJsonCommand("csharp-dial", "dotnet", [
     csharpDllPath,
@@ -156,6 +161,8 @@ test("CultNet TS/Rust/C# peers discover each other and exchange raw state over t
   assert.equal(csharpDial.remoteHello.runtimeId, "ts-peer");
   assert.equal(csharpDial.hasInteropSchema, true);
   assert.equal(csharpDial.retrievedNote.authorRuntimeId, "ts-peer");
+  assert.ok(csharpDial.mutatedNote.tags.includes("decorated:csharp-client"));
+  assert.equal(csharpDial.fireReceipt.accepted, true);
 
   const expectedPeers = ["csharp-peer", "rust-peer", "ts-peer"];
 
@@ -268,7 +275,7 @@ async function runJsonCommand(
   args: string[],
   cwd: string,
 ): Promise<any> {
-  const { stdout, stderr } = await execFileAsync(command, args, { cwd });
+  const { stdout, stderr } = await execFileAsync(command, args, { cwd, timeout: 30_000 });
   const trimmed = stdout.trim();
   if (!trimmed) {
     throw new Error(`${name} produced no stdout.\n${stderr}`);

@@ -114,6 +114,38 @@ export class CultNetDocumentRegistry {
     };
   }
 
+  createRawDocumentPutMessage<TDefinition extends AnyCultCacheDocumentDefinition>(
+    binding: CultNetDocumentBinding<TDefinition>,
+    messageId: string,
+    documentKey: string,
+    value: CultCacheDocumentValue<TDefinition>,
+    options: {
+      storedAt?: string;
+      sourceRuntimeId?: string;
+      sourceAgentId?: string;
+      sourceRole?: string;
+      tags?: string[];
+    } = {},
+  ): CultNetDocumentPutRawMessage {
+    const parsed = binding.definition.schema.parse(value);
+    const formatter = formatterFor(binding.definition);
+    return {
+      schemaVersion: "cultnet.document_put_raw.v0",
+      messageId,
+      document: {
+        schemaId: schemaIdForBinding(binding),
+        recordKey: documentKey,
+        storedAt: options.storedAt ?? new Date().toISOString(),
+        payloadEncoding: "messagepack",
+        payload: formatter.encode(parsed),
+        sourceRuntimeId: options.sourceRuntimeId,
+        sourceAgentId: options.sourceAgentId,
+        sourceRole: options.sourceRole,
+        tags: options.tags,
+      },
+    };
+  }
+
   createSnapshotResponse(
     cache: CultCache,
     messageId: string,
@@ -298,13 +330,18 @@ function decodeDocumentValue<TDefinition extends CultCacheDocumentDefinition>(
   definition: TDefinition,
   payload: Uint8Array,
 ): CultCacheDocumentValue<TDefinition> {
-  const formatter: CultCacheDocumentFormatter<CultCacheDocumentValue<TDefinition>> =
-    (definition.formatter as CultCacheDocumentFormatter<
-      CultCacheDocumentValue<TDefinition>
-    > | undefined) ?? {
+  const formatter = formatterFor(definition);
+  const decoded = formatter.decode(payload);
+  return definition.schema.parse(decoded) as CultCacheDocumentValue<TDefinition>;
+}
+
+function formatterFor<TDefinition extends CultCacheDocumentDefinition>(
+  definition: TDefinition,
+): CultCacheDocumentFormatter<CultCacheDocumentValue<TDefinition>> {
+  return (definition.formatter as CultCacheDocumentFormatter<
+    CultCacheDocumentValue<TDefinition>
+  > | undefined) ?? {
     encode: (value: CultCacheDocumentValue<TDefinition>) => encode(value),
     decode: (bytes: Uint8Array) => decode(bytes) as CultCacheDocumentValue<TDefinition>,
   };
-  const decoded = formatter.decode(payload);
-  return definition.schema.parse(decoded) as CultCacheDocumentValue<TDefinition>;
 }
